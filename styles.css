@@ -1,0 +1,126 @@
+:root {
+  --bg: #0d0f14;
+  --panel: #161a23;
+  --text: #e7e9ee;
+  --muted: #8b93a7;
+  --accent: #4dff9f;
+  --accent-2: #ff4d8d;
+  --border: #262b38;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at top, #161a23 0%, #0d0f14 60%);
+  color: var(--text);
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 3rem 1.5rem;
+}
+
+.hub-header {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+
+.hub-title {
+  font-size: clamp(2rem, 6vw, 3.2rem);
+  letter-spacing: 0.08em;
+  margin: 0;
+  font-weight: 800;
+}
+
+.hub-title span {
+  color: var(--accent);
+  text-shadow: 0 0 18px rgba(77, 255, 159, 0.5);
+}
+
+.hub-subtitle {
+  color: var(--muted);
+  margin-top: 0.5rem;
+  font-size: 1rem;
+}
+
+.game-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.5rem;
+  width: 100%;
+  max-width: 900px;
+}
+
+.game-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1.5rem;
+  text-decoration: none;
+  color: var(--text);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.game-card:not(.game-card--soon):hover {
+  transform: translateY(-4px);
+  border-color: var(--accent);
+}
+
+.game-card--soon {
+  opacity: 0.5;
+}
+
+.game-card h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.game-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.game-thumb {
+  height: 110px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.snake-thumb {
+  background: repeating-linear-gradient(
+    45deg,
+    #1c3326,
+    #1c3326 10px,
+    #16291e 10px,
+    #16291e 20px
+  );
+}
+
+.snake-thumb::after {
+  content: "🐍";
+  font-size: 2.5rem;
+}
+
+.soon-thumb {
+  background: #1b1f2a;
+  color: var(--muted);
+}
+
+.hub-footer {
+  margin-top: 3rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+}
