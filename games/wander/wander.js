@@ -62,9 +62,10 @@ const PANTS_CELL = 13;
 const PANTS_RANGE = Math.ceil(MAX_DIST / PANTS_CELL) + 1;
 const PANTS_DENSITY = 0.09;
 const PANTS_NOTICE_RADIUS = 7;
-const PANTS_FLEE_SPEED = 6.5;
-const PANTS_FLEE_DURATION = 1.5;
-const PANTS_BUBBLE_DURATION = 1.15;
+const PANTS_FLEE_SPEED = 9.5;
+const PANTS_FLEE_DURATION = 3;
+const PANTS_BUBBLE_DURATION = 2;
+const PANTS_RADIUS = 0.4;
 const PANTS_WAIST_HALF = 0.58;
 const PANTS_DEPTH_HALF = 0.3;
 const PANTS_BELT_HEIGHT = 0.16;
@@ -116,16 +117,15 @@ function bandRgba(near, t, alpha) {
 }
 
 let gridBandColor = [];
-let treeBandColor = [];
-let baconBandColor = [];
-let pantsBandColor = [];
 for (let i = 0; i < BANDS; i++) {
   const t = i / (BANDS - 1);
   const alpha = 1 - t;
   gridBandColor.push(bandRgba(GRID_NEAR, t, alpha));
-  treeBandColor.push(bandRgba(TREE_NEAR, t, alpha));
-  baconBandColor.push(bandRgba(BACON_NEAR, t, alpha));
-  pantsBandColor.push(bandRgba(PANTS_NEAR, t, alpha));
+}
+
+function itemColor(nearRGB, dist) {
+  const t = Math.min(1, Math.max(0, dist / MAX_DIST));
+  return bandRgba(nearRGB, t, 1 - t);
 }
 
 function hash2(ix, iz, seed) {
@@ -468,8 +468,16 @@ function updatePants(dt) {
     }
     if (st.fleeing) {
       const fx = Math.sin(st.fleeHeading), fz = Math.cos(st.fleeHeading);
-      st.x += fx * PANTS_FLEE_SPEED * dt;
-      st.z += fz * PANTS_FLEE_SPEED * dt;
+      let nx = st.x + fx * PANTS_FLEE_SPEED * dt;
+      let nz = st.z + fz * PANTS_FLEE_SPEED * dt;
+      for (const b of currentBuildings) {
+        if (Math.hypot(nx - b.cx, nz - b.cz) > b.footRadius + 4) continue;
+        for (const seg of b.walls) {
+          [nx, nz] = resolveWallCollision(nx, nz, seg, PANTS_RADIUS + 0.12);
+        }
+      }
+      st.x = nx;
+      st.z = nz;
       st.legPhase += dt * 16;
       st.fleeTimer -= dt;
       if (st.bubbleTimer > 0) st.bubbleTimer -= dt;
@@ -753,44 +761,92 @@ function drawSeg(a, b, group) {
   bandPaths[group][band].lineTo(pb.sx, pb.sy);
 }
 
-let bandPaths = { grid: [], tree: [], bacon: [], pants: [] };
+let bandPaths = { grid: [] };
 
-function drawBuildings(cam) {
+function strokeWireItem(segs, cam, color, lineWidth) {
+  const path = new Path2D();
+  let any = false;
+  for (const [a, b] of segs) {
+    const pa = project(a.x, a.y, a.z, cam), pb = project(b.x, b.y, b.z, cam);
+    const clipped = clipNear(pa, pb);
+    if (!clipped) continue;
+    const [ca, cb] = clipped;
+    const sa = toScreen(ca), sb = toScreen(cb);
+    path.moveTo(sa.sx, sa.sy);
+    path.lineTo(sb.sx, sb.sy);
+    any = true;
+  }
+  if (!any) return;
+  ctx.lineWidth = lineWidth;
+  ctx.strokeStyle = color;
+  ctx.shadowColor = color;
+  ctx.stroke(path);
+}
+
+function drawWallItem(it, cam) {
+  const a = project(it.seg.ax, it.padHeight, it.seg.az, cam);
+  const b = project(it.seg.bx, it.padHeight, it.seg.bz, cam);
+  const c = project(it.seg.bx, it.padHeight + WALL_HEIGHT, it.seg.bz, cam);
+  const d = project(it.seg.ax, it.padHeight + WALL_HEIGHT, it.seg.az, cam);
+  const poly = clipPolygonNear([a, b, c, d]);
+  if (poly.length < 3) return;
+  const screenPts = poly.map(toScreen);
+  const t = Math.min(1, Math.max(0, it.dist / MAX_DIST));
+  const fillA = lerp(0.92, 0, t);
+  const edgeA = lerp(1, 0, t);
+  ctx.beginPath();
+  ctx.moveTo(screenPts[0].sx, screenPts[0].sy);
+  for (let i = 1; i < screenPts.length; i++) ctx.lineTo(screenPts[i].sx, screenPts[i].sy);
+  ctx.closePath();
+  ctx.fillStyle = `rgba(16,20,28,${fillA.toFixed(3)})`;
+  ctx.fill();
+  const edgeColor = `rgba(${BUILDING_NEAR[0]},${BUILDING_NEAR[1]},${BUILDING_NEAR[2]},${edgeA.toFixed(3)})`;
+  ctx.lineWidth = 1.3;
+  ctx.strokeStyle = edgeColor;
+  ctx.shadowColor = edgeColor;
+  ctx.stroke();
+}
+
+function drawSceneObjects(cam) {
   const items = [];
+  for (const t of currentTrees) {
+    const c = project(t.x, t.y, t.z, cam);
+    if (c.z < NEAR - 3 || c.z > MAX_DIST + 5) continue;
+    items.push({ type: "tree", dist: c.z, obj: t });
+  }
+  for (const it of currentBacon) {
+    const c = project(it.x, it.y, it.z, cam);
+    if (c.z < NEAR - 3 || c.z > MAX_DIST + 5) continue;
+    items.push({ type: "bacon", dist: c.z, obj: it });
+  }
+  for (const p of currentPants) {
+    const c = project(p.x, p.y + 0.25, p.z, cam);
+    if (c.z < NEAR - 3 || c.z > MAX_DIST + 5) continue;
+    items.push({ type: "pants", dist: c.z, obj: p });
+  }
   for (const b of currentBuildings) {
     for (const seg of b.walls) {
       const midx = (seg.ax + seg.bx) / 2, midz = (seg.az + seg.bz) / 2;
       const c = project(midx, b.padHeight + WALL_HEIGHT / 2, midz, cam);
       if (c.z < NEAR - 3 || c.z > MAX_DIST + 15) continue;
-      items.push({ dist: c.z, seg, padHeight: b.padHeight });
+      items.push({ type: "wall", dist: c.z, seg, padHeight: b.padHeight });
     }
   }
   items.sort((a, b) => b.dist - a.dist);
+
+  ctx.shadowBlur = GLOW_BLUR;
   for (const it of items) {
-    const a = project(it.seg.ax, it.padHeight, it.seg.az, cam);
-    const b = project(it.seg.bx, it.padHeight, it.seg.bz, cam);
-    const c = project(it.seg.bx, it.padHeight + WALL_HEIGHT, it.seg.bz, cam);
-    const d = project(it.seg.ax, it.padHeight + WALL_HEIGHT, it.seg.az, cam);
-    const poly = clipPolygonNear([a, b, c, d]);
-    if (poly.length < 3) continue;
-    const screenPts = poly.map(toScreen);
-    const t = Math.min(1, Math.max(0, it.dist / MAX_DIST));
-    const fillA = lerp(0.92, 0, t);
-    const edgeA = lerp(1, 0, t);
-    ctx.beginPath();
-    ctx.moveTo(screenPts[0].sx, screenPts[0].sy);
-    for (let i = 1; i < screenPts.length; i++) ctx.lineTo(screenPts[i].sx, screenPts[i].sy);
-    ctx.closePath();
-    ctx.fillStyle = `rgba(16,20,28,${fillA.toFixed(3)})`;
-    ctx.fill();
-    const edgeColor = `rgba(${BUILDING_NEAR[0]},${BUILDING_NEAR[1]},${BUILDING_NEAR[2]},${edgeA.toFixed(3)})`;
-    ctx.shadowBlur = GLOW_BLUR;
-    ctx.shadowColor = edgeColor;
-    ctx.strokeStyle = edgeColor;
-    ctx.lineWidth = 1.3;
-    ctx.stroke();
-    ctx.shadowBlur = 0;
+    if (it.type === "tree") {
+      strokeWireItem(treeSegments(it.obj), cam, itemColor(TREE_NEAR, it.dist), 1);
+    } else if (it.type === "bacon") {
+      strokeWireItem(baconSegments(it.obj), cam, itemColor(BACON_NEAR, it.dist), 1);
+    } else if (it.type === "pants") {
+      strokeWireItem(pantsSegments(it.obj), cam, itemColor(PANTS_NEAR, it.dist), 1.8);
+    } else {
+      drawWallItem(it, cam);
+    }
   }
+  ctx.shadowBlur = 0;
 }
 
 function drawThoughtBubble(sx, sy, text, alpha) {
@@ -848,12 +904,9 @@ function render() {
   ctx.fillStyle = skyGrad;
   ctx.fillRect(0, 0, W, horizonY);
 
-  bandPaths = { grid: [], tree: [], bacon: [], pants: [] };
+  bandPaths = { grid: [] };
   for (let i = 0; i < BANDS; i++) {
     bandPaths.grid.push(new Path2D());
-    bandPaths.tree.push(new Path2D());
-    bandPaths.bacon.push(new Path2D());
-    bandPaths.pants.push(new Path2D());
   }
 
   const N = GRID_N;
@@ -876,60 +929,16 @@ function render() {
     for (let rz = 0; rz < N - 1; rz++) drawSeg(proj[rz][rx], proj[rz + 1][rx], "grid");
   }
 
-  const treesSorted = currentTrees
-    .map((t) => ({ t, cam: project(t.x, t.y, t.z, cam) }))
-    .filter((e) => e.cam.z > NEAR - 3 && e.cam.z < MAX_DIST + 5)
-    .sort((a, b) => b.cam.z - a.cam.z);
-  for (const e of treesSorted) {
-    const segs = treeSegments(e.t);
-    for (const [a, b] of segs) {
-      drawSeg(project(a.x, a.y, a.z, cam), project(b.x, b.y, b.z, cam), "tree");
-    }
-  }
-
-  const baconSorted = currentBacon
-    .map((it) => ({ it, cam: project(it.x, it.y, it.z, cam) }))
-    .filter((e) => e.cam.z > NEAR - 3 && e.cam.z < MAX_DIST + 5)
-    .sort((a, b) => b.cam.z - a.cam.z);
-  for (const e of baconSorted) {
-    const segs = baconSegments(e.it);
-    for (const [a, b] of segs) {
-      drawSeg(project(a.x, a.y, a.z, cam), project(b.x, b.y, b.z, cam), "bacon");
-    }
-  }
-
-  const pantsSorted = currentPants
-    .map((p) => ({ p, cam: project(p.x, p.y + 0.25, p.z, cam) }))
-    .filter((e) => e.cam.z > NEAR - 3 && e.cam.z < MAX_DIST + 5)
-    .sort((a, b) => b.cam.z - a.cam.z);
-  for (const e of pantsSorted) {
-    const segs = pantsSegments(e.p);
-    for (const [a, b] of segs) {
-      drawSeg(project(a.x, a.y, a.z, cam), project(b.x, b.y, b.z, cam), "pants");
-    }
-  }
-
   ctx.lineWidth = 1;
   ctx.shadowBlur = GLOW_BLUR;
   for (let i = 0; i < BANDS; i++) {
     ctx.shadowColor = gridBandColor[i];
     ctx.strokeStyle = gridBandColor[i];
     ctx.stroke(bandPaths.grid[i]);
-    ctx.shadowColor = treeBandColor[i];
-    ctx.strokeStyle = treeBandColor[i];
-    ctx.stroke(bandPaths.tree[i]);
-    ctx.shadowColor = baconBandColor[i];
-    ctx.strokeStyle = baconBandColor[i];
-    ctx.stroke(bandPaths.bacon[i]);
-    ctx.lineWidth = 1.8;
-    ctx.shadowColor = pantsBandColor[i];
-    ctx.strokeStyle = pantsBandColor[i];
-    ctx.stroke(bandPaths.pants[i]);
-    ctx.lineWidth = 1;
   }
   ctx.shadowBlur = 0;
 
-  drawBuildings(cam);
+  drawSceneObjects(cam);
 
   const R = 0.55;
   const py = terrainHeight(player.x, player.z);
