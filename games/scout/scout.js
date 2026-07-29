@@ -7,6 +7,8 @@ const overlay = document.getElementById("overlay");
 const overlayText = document.getElementById("overlay-text");
 const overlaySub = document.getElementById("overlay-sub");
 const restartBtn = document.getElementById("restart-btn");
+const jumpBtn = document.getElementById("jump-btn");
+const duckBtn = document.getElementById("duck-btn");
 
 const W = canvas.width;
 const H = canvas.height;
@@ -370,6 +372,20 @@ canvas.addEventListener("pointerdown", (e) => {
   if (e.pointerType === "touch") return;
   if (state === "gameover") resetState();
   else jump();
+});
+
+jumpBtn.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  if (state === "gameover") resetState();
+  else jump();
+});
+
+duckBtn.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  if (state !== "gameover") setDuck(true);
+});
+["pointerup", "pointercancel", "pointerleave"].forEach((evt) => {
+  duckBtn.addEventListener(evt, () => setDuck(false));
 });
 
 restartBtn.addEventListener("click", () => {

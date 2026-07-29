@@ -20,7 +20,12 @@
 
     <canvas id="board" width="480" height="260"></canvas>
 
-    <p class="hint">Space / Up / Tap to jump. Down / Swipe down to duck.</p>
+    <p class="hint">Space / Up to jump. Down to duck. Use the buttons or swipe on mobile.</p>
+
+    <div class="touch-controls">
+      <button class="touch-btn touch-duck" id="duck-btn" aria-label="Duck">▼ Duck</button>
+      <button class="touch-btn touch-jump" id="jump-btn" aria-label="Jump">▲ Jump</button>
+    </div>
 
     <div id="overlay" class="overlay">
       <p id="overlay-text">Scout smells an adventure.</p>

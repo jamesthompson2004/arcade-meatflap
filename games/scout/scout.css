@@ -36,6 +36,7 @@
   touch-action: none;
   cursor: pointer;
   max-width: 100%;
+  height: auto;
 }
 
 .hint {
@@ -43,6 +44,38 @@
   font-size: 0.85rem;
   margin: 0;
   text-align: center;
+}
+
+.touch-controls {
+  display: none;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 480px;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .touch-controls {
+    display: flex;
+  }
+}
+
+.touch-btn {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 1.1rem;
+  font-weight: 700;
+  padding: 1rem 0;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.touch-btn:active {
+  background: var(--accent);
+  color: #0d0f14;
 }
 
 .overlay {
