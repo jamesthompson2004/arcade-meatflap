@@ -48,8 +48,8 @@ const TREE_DENSITY = 0.16;
 const TREE_RADIUS = 0.55;
 const DISCOVER_RADIUS = 5;
 
-const CHASE_DIST = 7;
-const CHASE_HEIGHT = 3.4;
+const CHASE_DIST = 9;
+const CHASE_HEIGHT = 1.7;
 const MOVE_SPEED = 9;
 const MOVE_SPEED_BACK = 5.5;
 const TURN_SPEED = 2.3;
