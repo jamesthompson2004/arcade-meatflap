@@ -792,15 +792,17 @@ function drawWallItem(it, cam) {
   if (poly.length < 3) return;
   const screenPts = poly.map(toScreen);
   const t = Math.min(1, Math.max(0, it.dist / MAX_DIST));
-  const fillA = lerp(0.92, 0, t);
+  const fillA = lerp(0.55, 0, t);
   const edgeA = lerp(1, 0, t);
   ctx.beginPath();
   ctx.moveTo(screenPts[0].sx, screenPts[0].sy);
   for (let i = 1; i < screenPts.length; i++) ctx.lineTo(screenPts[i].sx, screenPts[i].sy);
   ctx.closePath();
   ctx.fillStyle = `rgba(16,20,28,${fillA.toFixed(3)})`;
+  ctx.shadowBlur = 0;
   ctx.fill();
   const edgeColor = `rgba(${BUILDING_NEAR[0]},${BUILDING_NEAR[1]},${BUILDING_NEAR[2]},${edgeA.toFixed(3)})`;
+  ctx.shadowBlur = GLOW_BLUR;
   ctx.lineWidth = 1.3;
   ctx.strokeStyle = edgeColor;
   ctx.shadowColor = edgeColor;
