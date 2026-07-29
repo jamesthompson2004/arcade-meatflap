@@ -13,6 +13,7 @@ const FOV_DEG = 75;
 const NEAR = 0.2;
 const MAX_DIST = 110;
 const BANDS = 6;
+const GLOW_BLUR = 4;
 
 let W, H, CX, CY, FOCAL;
 
@@ -38,7 +39,7 @@ function applySize() {
 applySize();
 window.addEventListener("resize", applySize);
 
-const CELL = 4;
+const CELL = 2;
 const GRID_RANGE = Math.ceil(MAX_DIST / CELL);
 const HEIGHT_SCALE = 15;
 
@@ -48,8 +49,19 @@ const TREE_DENSITY = 0.16;
 const TREE_RADIUS = 0.55;
 const DISCOVER_RADIUS = 5;
 
+const BUILDING_CELL = 46;
+const BUILDING_RANGE = Math.ceil((MAX_DIST + 25) / BUILDING_CELL) + 1;
+const BUILDING_DENSITY = 0.22;
+const WALL_HEIGHT = 3;
+const DOOR_WIDTH = 1.8;
+
 const CHASE_DIST = 9;
-const CHASE_HEIGHT = 1.7;
+const CHASE_HEIGHT = 2.8;
+const PITCH_DEG = 9;
+const PITCH_RAD = (PITCH_DEG * Math.PI) / 180;
+const PITCH_COS = Math.cos(PITCH_RAD);
+const PITCH_SIN = Math.sin(PITCH_RAD);
+const PITCH_TAN = Math.tan(PITCH_RAD);
 const MOVE_SPEED = 9;
 const MOVE_SPEED_BACK = 5.5;
 const TURN_SPEED = 2.3;
@@ -59,15 +71,15 @@ const BEST_KEY = "meatflap-wander-best";
 const BG_COLOR = [13, 15, 20];
 const GRID_NEAR = [90, 170, 210];
 const TREE_NEAR = [77, 255, 159];
+const BUILDING_NEAR = [255, 195, 110];
 const CHAR_COLOR = "#ff4d8d";
 
-let gridBandColor = [];
-let treeBandColor = [];
-for (let i = 0; i < BANDS; i++) {
-  const t = i / (BANDS - 1);
-  const alpha = 1 - t;
-  gridBandColor.push(bandRgba(GRID_NEAR, t, alpha));
-  treeBandColor.push(bandRgba(TREE_NEAR, t, alpha));
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function smooth(t) {
+  return t * t * (3 - 2 * t);
 }
 
 function bandRgba(near, t, alpha) {
@@ -77,12 +89,13 @@ function bandRgba(near, t, alpha) {
   return `rgba(${r | 0},${g | 0},${b | 0},${alpha.toFixed(3)})`;
 }
 
-function lerp(a, b, t) {
-  return a + (b - a) * t;
-}
-
-function smooth(t) {
-  return t * t * (3 - 2 * t);
+let gridBandColor = [];
+let treeBandColor = [];
+for (let i = 0; i < BANDS; i++) {
+  const t = i / (BANDS - 1);
+  const alpha = 1 - t;
+  gridBandColor.push(bandRgba(GRID_NEAR, t, alpha));
+  treeBandColor.push(bandRgba(TREE_NEAR, t, alpha));
 }
 
 function hash2(ix, iz, seed) {
@@ -105,7 +118,7 @@ function valueNoise(x, z, seed) {
 
 let SEED = 1337;
 
-function terrainHeight(x, z) {
+function terrainHeightRaw(x, z) {
   let h = 0, amp = 1, freq = 1, total = 0;
   for (let o = 0; o < 4; o++) {
     h += valueNoise(x * freq * 0.025, z * freq * 0.025, SEED + o * 101) * amp;
@@ -115,6 +128,94 @@ function terrainHeight(x, z) {
   }
   h /= total;
   return (h - 0.5) * HEIGHT_SCALE;
+}
+
+let currentBuildings = [];
+
+function terrainHeight(x, z) {
+  let h = terrainHeightRaw(x, z);
+  for (const b of currentBuildings) {
+    const dist = Math.hypot(x - b.cx, z - b.cz);
+    if (dist < b.footRadius) {
+      h = b.padHeight;
+    } else if (dist < b.padRadius) {
+      const t = smooth(1 - (dist - b.footRadius) / (b.padRadius - b.footRadius));
+      h = lerp(h, b.padHeight, t);
+    }
+  }
+  return h;
+}
+
+function addWallSeg(list, ax, az, bx, bz, gap) {
+  if (!gap) {
+    list.push({ ax, az, bx, bz });
+    return;
+  }
+  const g0 = Math.max(0, gap.center - gap.half);
+  const g1 = Math.min(1, gap.center + gap.half);
+  if (g0 > 0.02) list.push({ ax, az, bx: lerp(ax, bx, g0), bz: lerp(az, bz, g0) });
+  if (g1 < 0.98) list.push({ ax: lerp(ax, bx, g1), az: lerp(az, bz, g1), bx, bz });
+}
+
+function buildBuilding(ix, iz) {
+  const r = hash2(ix, iz, SEED + 55555);
+  if (r >= BUILDING_DENSITY) return null;
+  const jx = hash2(ix, iz, SEED + 66666);
+  const jz = hash2(ix, iz, SEED + 77777);
+  const cx = (ix + 0.5 + (jx - 0.5) * 0.4) * BUILDING_CELL;
+  const cz = (iz + 0.5 + (jz - 0.5) * 0.4) * BUILDING_CELL;
+  const width = 7 + hash2(ix, iz, SEED + 111) * 5;
+  const depth = 7 + hash2(ix, iz, SEED + 222) * 5;
+  const twoRooms = hash2(ix, iz, SEED + 333) > 0.5;
+  const doorSide = Math.floor(hash2(ix, iz, SEED + 444) * 4);
+  const padHeight = terrainHeightRaw(cx, cz);
+  const footRadius = Math.hypot(width, depth) / 2 + 1.6;
+  const padRadius = footRadius + 10;
+
+  const hw = width / 2, hd = depth / 2;
+  const NW = { x: cx - hw, z: cz - hd };
+  const NE = { x: cx + hw, z: cz - hd };
+  const SE = { x: cx + hw, z: cz + hd };
+  const SW = { x: cx - hw, z: cz + hd };
+
+  const walls = [];
+  const sides = [
+    [NW, NE, width],
+    [SE, SW, width],
+    [NE, SE, depth],
+    [SW, NW, depth],
+  ];
+  sides.forEach((s, i) => {
+    const [a, b, len] = s;
+    const gap = i === doorSide ? { center: 0.5, half: (DOOR_WIDTH / 2) / len } : null;
+    addWallSeg(walls, a.x, a.z, b.x, b.z, gap);
+  });
+
+  if (twoRooms) {
+    const splitOnX = hash2(ix, iz, SEED + 555) > 0.5;
+    const frac = 0.35 + hash2(ix, iz, SEED + 666) * 0.3;
+    if (splitOnX) {
+      const px = NW.x + width * frac;
+      addWallSeg(walls, px, NW.z, px, SE.z, { center: 0.5, half: (DOOR_WIDTH / 2) / depth });
+    } else {
+      const pz = NW.z + depth * frac;
+      addWallSeg(walls, NW.x, pz, SE.x, pz, { center: 0.5, half: (DOOR_WIDTH / 2) / width });
+    }
+  }
+
+  return { cx, cz, width, depth, padHeight, footRadius, padRadius, walls, key: ix + "_" + iz };
+}
+
+function getNearbyBuildings(px, pz) {
+  const list = [];
+  const cix = Math.floor(px / BUILDING_CELL), ciz = Math.floor(pz / BUILDING_CELL);
+  for (let dz = -BUILDING_RANGE; dz <= BUILDING_RANGE; dz++) {
+    for (let dx = -BUILDING_RANGE; dx <= BUILDING_RANGE; dx++) {
+      const b = buildBuilding(cix + dx, ciz + dz);
+      if (b && Math.hypot(b.cx - px, b.cz - pz) < MAX_DIST + b.padRadius) list.push(b);
+    }
+  }
+  return list;
 }
 
 function getNearbyTrees(px, pz) {
@@ -130,6 +231,7 @@ function getNearbyTrees(px, pz) {
       const tx = (ix + 0.5 + (jx - 0.5) * 0.7) * TREE_CELL;
       const tz = (iz + 0.5 + (jz - 0.5) * 0.7) * TREE_CELL;
       if (Math.hypot(tx - px, tz - pz) > MAX_DIST + TREE_CELL) continue;
+      if (currentBuildings.some((b) => Math.hypot(tx - b.cx, tz - b.cz) < b.footRadius + 3)) continue;
       const h0 = terrainHeight(tx, tz);
       const h1 = terrainHeight(tx + 1, tz);
       const h2 = terrainHeight(tx, tz + 1);
@@ -192,8 +294,10 @@ function sphereSegments(cx, cy, cz, R) {
 function project(x, y, z, cam) {
   const dx = x - cam.x, dz = z - cam.z;
   const rx = dx * cam.cosH - dz * cam.sinH;
-  const rz = dx * cam.sinH + dz * cam.cosH;
-  const ry = y - cam.y;
+  const rzYaw = dx * cam.sinH + dz * cam.cosH;
+  const ryYaw = y - cam.y;
+  const ry = ryYaw * cam.cosP + rzYaw * cam.sinP;
+  const rz = rzYaw * cam.cosP - ryYaw * cam.sinP;
   return { x: rx, y: ry, z: rz };
 }
 
@@ -243,6 +347,22 @@ function resetWorld(newSeed) {
   updateHud();
 }
 
+function resolveWallCollision(nx, nz, seg, minDist) {
+  const dx = seg.bx - seg.ax, dz = seg.bz - seg.az;
+  const lenSq = dx * dx + dz * dz;
+  let t = lenSq > 0 ? ((nx - seg.ax) * dx + (nz - seg.az) * dz) / lenSq : 0;
+  t = Math.max(0, Math.min(1, t));
+  const px = seg.ax + dx * t, pz = seg.az + dz * t;
+  const ddx = nx - px, ddz = nz - pz;
+  const dist = Math.hypot(ddx, ddz);
+  if (dist > 0.0001 && dist < minDist) {
+    const push = minDist - dist;
+    nx += (ddx / dist) * push;
+    nz += (ddz / dist) * push;
+  }
+  return [nx, nz];
+}
+
 function update(dt) {
   if (keys.left) player.heading -= TURN_SPEED * dt;
   if (keys.right) player.heading += TURN_SPEED * dt;
@@ -252,6 +372,7 @@ function update(dt) {
   if (keys.forward) moveAmt += MOVE_SPEED * dt;
   if (keys.backward) moveAmt -= MOVE_SPEED_BACK * dt;
 
+  currentBuildings = getNearbyBuildings(player.x, player.z);
   currentTrees = getNearbyTrees(player.x, player.z);
 
   if (moveAmt !== 0) {
@@ -265,6 +386,12 @@ function update(dt) {
         const push = minDist - dist;
         nx += (dx / dist) * push;
         nz += (dz / dist) * push;
+      }
+    }
+    for (const b of currentBuildings) {
+      if (Math.hypot(nx - b.cx, nz - b.cz) > b.footRadius + 4) continue;
+      for (const seg of b.walls) {
+        [nx, nz] = resolveWallCollision(nx, nz, seg, CHAR_RADIUS + 0.12);
       }
     }
     player.x = nx;
@@ -293,7 +420,11 @@ function getCamera() {
   const camX = player.x - fx * CHASE_DIST;
   const camZ = player.z - fz * CHASE_DIST;
   const camY = terrainHeight(player.x, player.z) + CHASE_HEIGHT;
-  return { x: camX, y: camY, z: camZ, cosH: Math.cos(player.heading), sinH: Math.sin(player.heading) };
+  return {
+    x: camX, y: camY, z: camZ,
+    cosH: Math.cos(player.heading), sinH: Math.sin(player.heading),
+    cosP: PITCH_COS, sinP: PITCH_SIN,
+  };
 }
 
 function drawSeg(a, b, group) {
@@ -312,17 +443,56 @@ function drawSeg(a, b, group) {
 
 let bandPaths = { grid: [], tree: [] };
 
+function drawBuildings(cam) {
+  const items = [];
+  for (const b of currentBuildings) {
+    for (const seg of b.walls) {
+      const midx = (seg.ax + seg.bx) / 2, midz = (seg.az + seg.bz) / 2;
+      const c = project(midx, b.padHeight + WALL_HEIGHT / 2, midz, cam);
+      if (c.z < NEAR - 3 || c.z > MAX_DIST + 15) continue;
+      items.push({ dist: c.z, seg, padHeight: b.padHeight });
+    }
+  }
+  items.sort((a, b) => b.dist - a.dist);
+  for (const it of items) {
+    const a = project(it.seg.ax, it.padHeight, it.seg.az, cam);
+    const b = project(it.seg.bx, it.padHeight, it.seg.bz, cam);
+    const c = project(it.seg.bx, it.padHeight + WALL_HEIGHT, it.seg.bz, cam);
+    const d = project(it.seg.ax, it.padHeight + WALL_HEIGHT, it.seg.az, cam);
+    if (a.z <= NEAR || b.z <= NEAR || c.z <= NEAR || d.z <= NEAR) continue;
+    const sa = toScreen(a), sb = toScreen(b), sc = toScreen(c), sd = toScreen(d);
+    const t = Math.min(1, Math.max(0, it.dist / MAX_DIST));
+    const fillA = lerp(0.92, 0, t);
+    const edgeA = lerp(1, 0, t);
+    ctx.beginPath();
+    ctx.moveTo(sa.sx, sa.sy);
+    ctx.lineTo(sb.sx, sb.sy);
+    ctx.lineTo(sc.sx, sc.sy);
+    ctx.lineTo(sd.sx, sd.sy);
+    ctx.closePath();
+    ctx.fillStyle = `rgba(16,20,28,${fillA.toFixed(3)})`;
+    ctx.fill();
+    const edgeColor = `rgba(${BUILDING_NEAR[0]},${BUILDING_NEAR[1]},${BUILDING_NEAR[2]},${edgeA.toFixed(3)})`;
+    ctx.shadowBlur = GLOW_BLUR;
+    ctx.shadowColor = edgeColor;
+    ctx.strokeStyle = edgeColor;
+    ctx.lineWidth = 1.3;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+}
+
 function render() {
+  const cam = getCamera();
+  const horizonY = Math.max(0, Math.min(H, CY - PITCH_TAN * FOCAL));
+
   ctx.fillStyle = "#0d0f14";
   ctx.fillRect(0, 0, W, H);
-
-  const skyGrad = ctx.createLinearGradient(0, 0, 0, CY);
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, Math.max(horizonY, 1));
   skyGrad.addColorStop(0, "#171b2b");
   skyGrad.addColorStop(1, "#0d0f14");
   ctx.fillStyle = skyGrad;
-  ctx.fillRect(0, 0, W, CY);
-
-  const cam = getCamera();
+  ctx.fillRect(0, 0, W, horizonY);
 
   bandPaths = { grid: [], tree: [] };
   for (let i = 0; i < BANDS; i++) {
@@ -361,23 +531,40 @@ function render() {
     }
   }
 
+  ctx.lineWidth = 1;
+  ctx.shadowBlur = GLOW_BLUR;
+  for (let i = 0; i < BANDS; i++) {
+    ctx.shadowColor = gridBandColor[i];
+    ctx.strokeStyle = gridBandColor[i];
+    ctx.stroke(bandPaths.grid[i]);
+    ctx.shadowColor = treeBandColor[i];
+    ctx.strokeStyle = treeBandColor[i];
+    ctx.stroke(bandPaths.tree[i]);
+  }
+  ctx.shadowBlur = 0;
+
+  drawBuildings(cam);
+
   const bob = Math.sin(bobPhase) * 0.09 + 0.09;
   const py = terrainHeight(player.x, player.z);
   const R = 0.55;
   const nub = sphereSegments(player.x, py + R + bob, player.z, R);
+  ctx.strokeStyle = CHAR_COLOR;
+  ctx.lineWidth = 1.5;
+  ctx.shadowBlur = GLOW_BLUR + 1;
+  ctx.shadowColor = CHAR_COLOR;
   for (const [a, b] of nub.segs) {
     const pa = project(a.x, a.y, a.z, cam), pb = project(b.x, b.y, b.z, cam);
     const clipped = clipNear(pa, pb);
     if (!clipped) continue;
     const [ca, cb] = clipped;
     const sa = toScreen(ca), sb = toScreen(cb);
-    ctx.strokeStyle = CHAR_COLOR;
-    ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(sa.sx, sa.sy);
     ctx.lineTo(sb.sx, sb.sy);
     ctx.stroke();
   }
+  ctx.shadowBlur = 0;
   const eyeCam = project(nub.eye.x, nub.eye.y, nub.eye.z, cam);
   if (eyeCam.z > NEAR) {
     const es = toScreen(eyeCam);
@@ -385,14 +572,6 @@ function render() {
     ctx.beginPath();
     ctx.arc(es.sx, es.sy, Math.max(2, (FOCAL / eyeCam.z) * 0.09), 0, Math.PI * 2);
     ctx.fill();
-  }
-
-  ctx.lineWidth = 1;
-  for (let i = 0; i < BANDS; i++) {
-    ctx.strokeStyle = gridBandColor[i];
-    ctx.stroke(bandPaths.grid[i]);
-    ctx.strokeStyle = treeBandColor[i];
-    ctx.stroke(bandPaths.tree[i]);
   }
 }
 
@@ -402,8 +581,12 @@ function loop(now) {
   let dt = (now - lastTime) / 1000;
   lastTime = now;
   dt = Math.min(dt, 0.05);
-  if (started) update(dt);
-  else currentTrees = getNearbyTrees(player.x, player.z);
+  if (started) {
+    update(dt);
+  } else {
+    currentBuildings = getNearbyBuildings(player.x, player.z);
+    currentTrees = getNearbyTrees(player.x, player.z);
+  }
   render();
   requestAnimationFrame(loop);
 }
