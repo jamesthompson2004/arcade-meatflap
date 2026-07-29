@@ -34,13 +34,56 @@
   border: 2px solid var(--border);
   border-radius: 10px;
   touch-action: none;
+  max-width: 100%;
+  height: auto;
 }
 
 .hint {
   color: var(--muted);
   font-size: 0.85rem;
   margin: 0;
+  text-align: center;
+  padding: 0 1rem;
 }
+
+.dpad {
+  display: none;
+  grid-template-columns: repeat(3, 58px);
+  grid-template-rows: repeat(3, 58px);
+  grid-template-areas:
+    ".    up    ."
+    "left  .    right"
+    ".    down  .";
+  gap: 6px;
+  margin-top: 0.25rem;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .dpad {
+    display: grid;
+  }
+}
+
+.dpad-btn {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 1.3rem;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.dpad-btn:active {
+  background: var(--accent);
+  color: #0d0f14;
+}
+
+.dpad-up { grid-area: up; }
+.dpad-left { grid-area: left; }
+.dpad-down { grid-area: down; }
+.dpad-right { grid-area: right; }
 
 .overlay {
   position: fixed;

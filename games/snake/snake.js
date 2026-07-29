@@ -8,7 +8,9 @@ const restartBtn = document.getElementById("restart-btn");
 
 const GRID = 20;
 const CELLS = canvas.width / GRID;
-const TICK_MS = 110;
+const START_TICK_MS = 160;
+const MIN_TICK_MS = 70;
+const SPEEDUP_PER_FOOD = 4;
 const BEST_KEY = "meatflap-snake-best";
 
 let snake, direction, nextDirection, food, score, best, running, loopId;
@@ -45,6 +47,10 @@ function placeFood() {
 function updateHud() {
   scoreEl.textContent = score;
   bestEl.textContent = best;
+}
+
+function tickDelay() {
+  return Math.max(MIN_TICK_MS, START_TICK_MS - score * SPEEDUP_PER_FOOD);
 }
 
 function tick() {
@@ -139,17 +145,42 @@ canvas.addEventListener("touchend", (e) => {
   const t = e.changedTouches[0];
   const dx = t.clientX - touchStart.x;
   const dy = t.clientY - touchStart.y;
-  if (Math.abs(dx) > Math.abs(dy)) {
-    setDirection(dx > 0 ? 1 : -1, 0);
-  } else {
-    setDirection(0, dy > 0 ? 1 : -1);
+  if (Math.abs(dx) > 12 || Math.abs(dy) > 12) {
+    if (Math.abs(dx) > Math.abs(dy)) {
+      setDirection(dx > 0 ? 1 : -1, 0);
+    } else {
+      setDirection(0, dy > 0 ? 1 : -1);
+    }
   }
   touchStart = null;
 });
 
+const DPAD_DIRECTIONS = {
+  up: [0, -1],
+  down: [0, 1],
+  left: [-1, 0],
+  right: [1, 0],
+};
+
+document.querySelectorAll(".dpad-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    if (!running) {
+      resetState();
+      return;
+    }
+    const [dx, dy] = DPAD_DIRECTIONS[btn.dataset.dir];
+    setDirection(dx, dy);
+  });
+});
+
 restartBtn.addEventListener("click", resetState);
+
+function loop() {
+  tick();
+  loopId = setTimeout(loop, tickDelay());
+}
 
 resetState();
 draw();
-clearInterval(loopId);
-loopId = setInterval(tick, TICK_MS);
+clearTimeout(loopId);
+loop();

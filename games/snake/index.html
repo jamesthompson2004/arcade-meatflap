@@ -19,7 +19,14 @@
 
     <canvas id="board" width="400" height="400"></canvas>
 
-    <p class="hint">Arrow keys / WASD to move. Swipe on mobile. Space to restart.</p>
+    <p class="hint">Arrow keys / WASD to move. Swipe or use the pad on mobile. Space to restart.</p>
+
+    <div class="dpad">
+      <button class="dpad-btn dpad-up" data-dir="up" aria-label="Up">▲</button>
+      <button class="dpad-btn dpad-left" data-dir="left" aria-label="Left">◀</button>
+      <button class="dpad-btn dpad-down" data-dir="down" aria-label="Down">▼</button>
+      <button class="dpad-btn dpad-right" data-dir="right" aria-label="Right">▶</button>
+    </div>
 
     <div id="overlay" class="overlay hidden">
       <p id="overlay-text">Game Over</p>
