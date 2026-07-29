@@ -7,18 +7,39 @@ const newWorldBtn = document.getElementById("new-world-btn");
 const overlay = document.getElementById("overlay");
 const startBtn = document.getElementById("start-btn");
 
-const W = canvas.width;
-const H = canvas.height;
-const CX = W / 2;
-const CY = H * 0.42;
+const MOBILE_W = 840;
+const MOBILE_H = 480;
 const FOV_DEG = 75;
-const FOCAL = (W / 2) / Math.tan((FOV_DEG / 2) * Math.PI / 180);
 const NEAR = 0.2;
 const MAX_DIST = 110;
 const BANDS = 6;
 
-const CELL = 6;
-const GRID_RANGE = 15;
+let W, H, CX, CY, FOCAL;
+
+function isDesktopFill() {
+  return window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+}
+
+function applySize() {
+  const desktop = isDesktopFill();
+  const dpr = desktop ? Math.min(window.devicePixelRatio || 1, 2) : 1;
+  const cssW = desktop ? window.innerWidth : MOBILE_W;
+  const cssH = desktop ? window.innerHeight : MOBILE_H;
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  W = cssW;
+  H = cssH;
+  CX = W / 2;
+  CY = H * 0.42;
+  FOCAL = (W / 2) / Math.tan((FOV_DEG / 2) * Math.PI / 180);
+}
+
+applySize();
+window.addEventListener("resize", applySize);
+
+const CELL = 4;
+const GRID_RANGE = Math.ceil(MAX_DIST / CELL);
 const HEIGHT_SCALE = 15;
 
 const TREE_CELL = 9;
@@ -271,7 +292,7 @@ function getCamera() {
   const fx = Math.sin(player.heading), fz = Math.cos(player.heading);
   const camX = player.x - fx * CHASE_DIST;
   const camZ = player.z - fz * CHASE_DIST;
-  const camY = terrainHeight(camX, camZ) + CHASE_HEIGHT;
+  const camY = terrainHeight(player.x, player.z) + CHASE_HEIGHT;
   return { x: camX, y: camY, z: camZ, cosH: Math.cos(player.heading), sinH: Math.sin(player.heading) };
 }
 
