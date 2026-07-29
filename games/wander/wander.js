@@ -15,6 +15,7 @@ const NEAR = 0.2;
 const MAX_DIST = 110;
 const BANDS = 6;
 const GLOW_BLUR = 5.5;
+const BACON_GLOW_BLUR = 11;
 
 let W, H, CX, CY, FOCAL;
 
@@ -263,7 +264,7 @@ function buildBuilding(ix, iz) {
 
   const width = 8 + rng() * 10;
   const depth = 8 + rng() * 10;
-  const roomsWanted = 1 + Math.floor(rng() * 2);
+  const roomsWanted = 1;
 
   const padHeight = terrainHeightRaw(cx, cz);
   const footRadius = Math.hypot(width, depth) / 2 + 1.6;
@@ -369,7 +370,7 @@ function treeSegments(t) {
 }
 
 function baconSegments(item) {
-  const height = 0.6;
+  const height = 1.2;
   const cosR = Math.cos(item.rot), sinR = Math.sin(item.rot);
   const place = (right, fwd, up) => ({
     x: item.x + right * cosR - fwd * sinR,
@@ -381,9 +382,9 @@ function baconSegments(item) {
   for (let i = 0; i <= M; i++) {
     const t = i / M;
     const up = t * height;
-    const wave = Math.sin(t * Math.PI * 2.6) * 0.09;
-    frontPts.push(place(wave, 0.055, up));
-    backPts.push(place(wave, -0.055, up));
+    const wave = Math.sin(t * Math.PI * 2.6) * 0.18;
+    frontPts.push(place(wave, 0.11, up));
+    backPts.push(place(wave, -0.11, up));
   }
   const segs = [];
   for (let i = 0; i < M; i++) {
@@ -537,10 +538,10 @@ function pantsSegments(p) {
   ];
 }
 
-function sphereSegments(cx, topY, cz, R, vScale, hScale) {
+function sphereSegments(cx, footY, cz, R, vScale, hScale, tipY) {
   const segs = [];
   const N = 8;
-  const centerY = topY - R * vScale;
+  const centerY = footY + R * vScale;
   const ringFracs = [-0.55, 0, 0.55];
   const rings = ringFracs.map((f) => {
     const dyLocal = f * R;
@@ -560,13 +561,13 @@ function sphereSegments(cx, topY, cz, R, vScale, hScale) {
   for (let r = 0; r < rings.length - 1; r++) {
     for (let i = 0; i < N; i++) segs.push([rings[r][i], rings[r + 1][i]]);
   }
-  const top = { x: cx, y: topY, z: cz };
-  const bottom = { x: cx, y: centerY - R * vScale, z: cz };
+  const top = { x: cx, y: centerY + R * vScale, z: cz };
+  const bottom = { x: cx, y: footY, z: cz };
   for (let i = 0; i < N; i++) {
     segs.push([rings[rings.length - 1][i], top]);
     segs.push([rings[0][i], bottom]);
   }
-  const eye = { x: cx, y: topY + R * 0.4, z: cz };
+  const eye = { x: cx, y: tipY, z: cz };
   segs.push([top, eye]);
   return { segs, eye };
 }
@@ -763,7 +764,7 @@ function drawSeg(a, b, group) {
 
 let bandPaths = { grid: [] };
 
-function strokeWireItem(segs, cam, color, lineWidth) {
+function strokeWireItem(segs, cam, color, lineWidth, blur) {
   const path = new Path2D();
   let any = false;
   for (const [a, b] of segs) {
@@ -780,6 +781,7 @@ function strokeWireItem(segs, cam, color, lineWidth) {
   ctx.lineWidth = lineWidth;
   ctx.strokeStyle = color;
   ctx.shadowColor = color;
+  ctx.shadowBlur = blur;
   ctx.stroke(path);
 }
 
@@ -836,14 +838,13 @@ function drawSceneObjects(cam) {
   }
   items.sort((a, b) => b.dist - a.dist);
 
-  ctx.shadowBlur = GLOW_BLUR;
   for (const it of items) {
     if (it.type === "tree") {
-      strokeWireItem(treeSegments(it.obj), cam, itemColor(TREE_NEAR, it.dist), 1);
+      strokeWireItem(treeSegments(it.obj), cam, itemColor(TREE_NEAR, it.dist), 1, GLOW_BLUR);
     } else if (it.type === "bacon") {
-      strokeWireItem(baconSegments(it.obj), cam, itemColor(BACON_NEAR, it.dist), 1);
+      strokeWireItem(baconSegments(it.obj), cam, itemColor(BACON_NEAR, it.dist), 1.4, BACON_GLOW_BLUR);
     } else if (it.type === "pants") {
-      strokeWireItem(pantsSegments(it.obj), cam, itemColor(PANTS_NEAR, it.dist), 1.8);
+      strokeWireItem(pantsSegments(it.obj), cam, itemColor(PANTS_NEAR, it.dist), 1.8, GLOW_BLUR);
     } else {
       drawWallItem(it, cam);
     }
@@ -944,11 +945,12 @@ function render() {
 
   const R = 0.55;
   const py = terrainHeight(player.x, player.z);
-  const topY = py + 2 * R;
+  const footY = py;
+  const tipY = py + 2 * R + R * 0.4;
   const squish = Math.sin(squishPhase) * SQUISH_AMOUNT;
   const vScale = 1 + squish;
   const hScale = 1 - squish;
-  const nub = sphereSegments(player.x, topY, player.z, R, vScale, hScale);
+  const nub = sphereSegments(player.x, footY, player.z, R, vScale, hScale, tipY);
   ctx.strokeStyle = CHAR_COLOR;
   ctx.lineWidth = 1.5;
   ctx.shadowBlur = GLOW_BLUR + 1;
