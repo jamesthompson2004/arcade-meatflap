@@ -65,6 +65,7 @@ const PANTS_DENSITY = 0.09;
 const PANTS_NOTICE_RADIUS = 7;
 const PANTS_FLEE_SPEED = 9.5;
 const PANTS_FLEE_DURATION = 3;
+const PANTS_RAMP_DURATION = 0.35;
 const PANTS_BUBBLE_DURATION = 2;
 const PANTS_RADIUS = 0.4;
 const PANTS_WAIST_HALF = 0.58;
@@ -470,9 +471,12 @@ function updatePants(dt) {
       }
     }
     if (st.fleeing) {
+      const elapsed = PANTS_FLEE_DURATION - st.fleeTimer;
+      const rampT = Math.min(1, elapsed / PANTS_RAMP_DURATION);
+      const speed = PANTS_FLEE_SPEED * rampT;
       const fx = Math.sin(st.fleeHeading), fz = Math.cos(st.fleeHeading);
-      let nx = st.x + fx * PANTS_FLEE_SPEED * dt;
-      let nz = st.z + fz * PANTS_FLEE_SPEED * dt;
+      let nx = st.x + fx * speed * dt;
+      let nz = st.z + fz * speed * dt;
       for (const b of currentBuildings) {
         if (Math.hypot(nx - b.cx, nz - b.cz) > b.footRadius + 4) continue;
         for (const seg of b.walls) {
@@ -481,7 +485,7 @@ function updatePants(dt) {
       }
       st.x = nx;
       st.z = nz;
-      st.legPhase += dt * 16;
+      st.legPhase += dt * 16 * rampT;
       st.fleeTimer -= dt;
       if (st.bubbleTimer > 0) st.bubbleTimer -= dt;
       if (st.fleeTimer <= 0) {
