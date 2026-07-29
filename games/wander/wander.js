@@ -91,6 +91,8 @@ const MOVE_SPEED_BACK = 5.5;
 const TURN_SPEED = 2.3;
 const CHAR_RADIUS = 0.55;
 const SQUISH_AMOUNT = 0.16;
+const SQUISH_SETTLE_K = 220;
+const SQUISH_SETTLE_C = 14;
 
 const BEST_BACON_KEY = "meatflap-wander-best-bacon";
 const BEST_PANTS_KEY = "meatflap-wander-best-pants";
@@ -628,6 +630,8 @@ let currentBacon = [];
 let currentPants = [];
 let started = false;
 let squishPhase = 0;
+let squishValue = 0;
+let squishVel = 0;
 const keys = { forward: false, backward: false, left: false, right: false };
 
 function updateHud() {
@@ -656,6 +660,8 @@ function resetWorld(newSeed) {
   pantsState.clear();
   goneKeys.clear();
   squishPhase = 0;
+  squishValue = 0;
+  squishVel = 0;
   updateHud();
 }
 
@@ -719,6 +725,17 @@ function update(dt) {
     player.x = nx;
     player.z = nz;
     squishPhase += Math.abs(moveAmt) * 1.6;
+    const newSquish = Math.sin(squishPhase) * SQUISH_AMOUNT;
+    squishVel = (newSquish - squishValue) / dt;
+    squishValue = newSquish;
+  } else if (squishValue !== 0 || squishVel !== 0) {
+    const accel = -SQUISH_SETTLE_K * squishValue - SQUISH_SETTLE_C * squishVel;
+    squishVel += accel * dt;
+    squishValue += squishVel * dt;
+    if (Math.abs(squishValue) < 0.002 && Math.abs(squishVel) < 0.02) {
+      squishValue = 0;
+      squishVel = 0;
+    }
   }
 
   for (const item of currentBacon) {
@@ -947,9 +964,8 @@ function render() {
   const py = terrainHeight(player.x, player.z);
   const footY = py;
   const tipY = py + 2 * R + R * 0.4;
-  const squish = Math.sin(squishPhase) * SQUISH_AMOUNT;
-  const vScale = 1 + squish;
-  const hScale = 1 - squish;
+  const vScale = 1 + squishValue;
+  const hScale = 1 - squishValue;
   const nub = sphereSegments(player.x, footY, player.z, R, vScale, hScale, tipY);
   ctx.strokeStyle = CHAR_COLOR;
   ctx.lineWidth = 1.5;
