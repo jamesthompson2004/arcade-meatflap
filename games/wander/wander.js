@@ -13,7 +13,7 @@ const FOV_DEG = 75;
 const NEAR = 0.2;
 const MAX_DIST = 110;
 const BANDS = 6;
-const GLOW_BLUR = 4;
+const GLOW_BLUR = 5.5;
 
 let W, H, CX, CY, FOCAL;
 
@@ -41,6 +41,7 @@ window.addEventListener("resize", applySize);
 
 const CELL = 2;
 const GRID_RANGE = Math.ceil(MAX_DIST / CELL);
+const GRID_N = GRID_RANGE * 2 + 1;
 const HEIGHT_SCALE = 15;
 
 const TREE_CELL = 9;
@@ -51,9 +52,10 @@ const DISCOVER_RADIUS = 5;
 
 const BUILDING_CELL = 46;
 const BUILDING_RANGE = Math.ceil((MAX_DIST + 25) / BUILDING_CELL) + 1;
-const BUILDING_DENSITY = 0.22;
-const WALL_HEIGHT = 3;
+const BUILDING_DENSITY = 0.28;
 const DOOR_WIDTH = 1.8;
+const MIN_ROOM_SIZE = 3.2;
+const GIANT_MILESTONE = 1000;
 
 const CHASE_DIST = 9;
 const CHASE_HEIGHT = 2.8;
@@ -146,6 +148,24 @@ function terrainHeight(x, z) {
   return h;
 }
 
+const gridHeightCache = new Float64Array(GRID_N * GRID_N);
+let gridCacheGX = null, gridCacheGZ = null, gridCacheSig = "";
+
+function ensureGridHeights(baseGX, baseGZ) {
+  const sig = currentBuildings.map((b) => b.key).join("|");
+  if (gridCacheGX === baseGX && gridCacheGZ === baseGZ && gridCacheSig === sig) return;
+  gridCacheGX = baseGX;
+  gridCacheGZ = baseGZ;
+  gridCacheSig = sig;
+  for (let rz = 0; rz < GRID_N; rz++) {
+    const wz = (baseGZ + rz - GRID_RANGE) * CELL;
+    for (let rx = 0; rx < GRID_N; rx++) {
+      const wx = (baseGX + rx - GRID_RANGE) * CELL;
+      gridHeightCache[rz * GRID_N + rx] = terrainHeight(wx, wz);
+    }
+  }
+}
+
 function addWallSeg(list, ax, az, bx, bz, gap) {
   if (!gap) {
     list.push({ ax, az, bx, bz });
@@ -157,17 +177,61 @@ function addWallSeg(list, ax, az, bx, bz, gap) {
   if (g1 < 0.98) list.push({ ax: lerp(ax, bx, g1), az: lerp(az, bz, g1), bx, bz });
 }
 
-function buildBuilding(ix, iz) {
-  const r = hash2(ix, iz, SEED + 55555);
-  if (r >= BUILDING_DENSITY) return null;
-  const jx = hash2(ix, iz, SEED + 66666);
-  const jz = hash2(ix, iz, SEED + 77777);
-  const cx = (ix + 0.5 + (jx - 0.5) * 0.4) * BUILDING_CELL;
-  const cz = (iz + 0.5 + (jz - 0.5) * 0.4) * BUILDING_CELL;
-  const width = 7 + hash2(ix, iz, SEED + 111) * 5;
-  const depth = 7 + hash2(ix, iz, SEED + 222) * 5;
-  const twoRooms = hash2(ix, iz, SEED + 333) > 0.5;
-  const doorSide = Math.floor(hash2(ix, iz, SEED + 444) * 4);
+function makeRng(ix, iz, seedBase) {
+  let n = 0;
+  return () => hash2(ix, iz, seedBase + (n++) * 97 + 13);
+}
+
+function buildFloorplan(width, depth, roomsWanted, rng) {
+  const hw = width / 2, hd = depth / 2;
+  const rooms = [{ x0: -hw, z0: -hd, x1: hw, z1: hd }];
+  const partitions = [];
+  while (rooms.length < roomsWanted) {
+    let idx = 0, bestArea = -1;
+    for (let i = 0; i < rooms.length; i++) {
+      const r = rooms[i];
+      const area = (r.x1 - r.x0) * (r.z1 - r.z0);
+      if (area > bestArea) { bestArea = area; idx = i; }
+    }
+    const r = rooms[idx];
+    const w = r.x1 - r.x0, d = r.z1 - r.z0;
+    const canSplitX = w >= MIN_ROOM_SIZE * 2 + 0.5;
+    const canSplitZ = d >= MIN_ROOM_SIZE * 2 + 0.5;
+    if (!canSplitX && !canSplitZ) break;
+    const splitOnX = canSplitX && (!canSplitZ || w >= d);
+    const frac = 0.4 + rng() * 0.2;
+    const gapCenter = 0.3 + rng() * 0.4;
+    if (splitOnX) {
+      const px = r.x0 + w * frac;
+      const gapHalf = Math.min(0.45, (DOOR_WIDTH / 2) / d);
+      partitions.push({ ax: px, az: r.z0, bx: px, bz: r.z1, gap: { center: gapCenter, half: gapHalf } });
+      rooms.splice(idx, 1, { x0: r.x0, z0: r.z0, x1: px, z1: r.z1 }, { x0: px, z0: r.z0, x1: r.x1, z1: r.z1 });
+    } else {
+      const pz = r.z0 + d * frac;
+      const gapHalf = Math.min(0.45, (DOOR_WIDTH / 2) / w);
+      partitions.push({ ax: r.x0, az: pz, bx: r.x1, bz: pz, gap: { center: gapCenter, half: gapHalf } });
+      rooms.splice(idx, 1, { x0: r.x0, z0: r.z0, x1: r.x1, z1: pz }, { x0: r.x0, z0: pz, x1: r.x1, z1: r.z1 });
+    }
+  }
+  return partitions;
+}
+
+function buildBuilding(ix, iz, opts) {
+  opts = opts || {};
+  const giant = !!opts.giant;
+  if (!giant && hash2(ix, iz, SEED + 55555) >= BUILDING_DENSITY) return null;
+
+  const rng = makeRng(ix, iz, SEED + (giant ? 999000 : 0));
+  const jx = rng(), jz = rng();
+  const cx = opts.cx !== undefined ? opts.cx : (ix + 0.5 + (jx - 0.5) * 0.4) * BUILDING_CELL;
+  const cz = opts.cz !== undefined ? opts.cz : (iz + 0.5 + (jz - 0.5) * 0.4) * BUILDING_CELL;
+
+  const width = giant ? 34 + rng() * 12 : 8 + rng() * 10;
+  const depth = giant ? 30 + rng() * 12 : 8 + rng() * 10;
+  const roomsWanted = giant ? 9 + Math.floor(rng() * 5) : 1 + Math.floor(rng() * 4);
+  const wallHeight = giant ? 6.5 : 3;
+  const doorCount = giant ? 2 : 1;
+
   const padHeight = terrainHeightRaw(cx, cz);
   const footRadius = Math.hypot(width, depth) / 2 + 1.6;
   const padRadius = footRadius + 10;
@@ -185,25 +249,20 @@ function buildBuilding(ix, iz) {
     [NE, SE, depth],
     [SW, NW, depth],
   ];
+  const doorSides = new Set();
+  while (doorSides.size < doorCount) doorSides.add(Math.floor(rng() * 4));
   sides.forEach((s, i) => {
     const [a, b, len] = s;
-    const gap = i === doorSide ? { center: 0.5, half: (DOOR_WIDTH / 2) / len } : null;
+    const gap = doorSides.has(i) ? { center: 0.5, half: (DOOR_WIDTH / 2) / len } : null;
     addWallSeg(walls, a.x, a.z, b.x, b.z, gap);
   });
 
-  if (twoRooms) {
-    const splitOnX = hash2(ix, iz, SEED + 555) > 0.5;
-    const frac = 0.35 + hash2(ix, iz, SEED + 666) * 0.3;
-    if (splitOnX) {
-      const px = NW.x + width * frac;
-      addWallSeg(walls, px, NW.z, px, SE.z, { center: 0.5, half: (DOOR_WIDTH / 2) / depth });
-    } else {
-      const pz = NW.z + depth * frac;
-      addWallSeg(walls, NW.x, pz, SE.x, pz, { center: 0.5, half: (DOOR_WIDTH / 2) / width });
-    }
+  const partitions = buildFloorplan(width, depth, roomsWanted, rng);
+  for (const p of partitions) {
+    addWallSeg(walls, cx + p.ax, cz + p.az, cx + p.bx, cz + p.bz, p.gap);
   }
 
-  return { cx, cz, width, depth, padHeight, footRadius, padRadius, walls, key: ix + "_" + iz };
+  return { cx, cz, width, depth, padHeight, footRadius, padRadius, walls, wallHeight, giant, key: giant ? "giant" : ix + "_" + iz };
 }
 
 function getNearbyBuildings(px, pz) {
@@ -212,10 +271,30 @@ function getNearbyBuildings(px, pz) {
   for (let dz = -BUILDING_RANGE; dz <= BUILDING_RANGE; dz++) {
     for (let dx = -BUILDING_RANGE; dx <= BUILDING_RANGE; dx++) {
       const b = buildBuilding(cix + dx, ciz + dz);
-      if (b && Math.hypot(b.cx - px, b.cz - pz) < MAX_DIST + b.padRadius) list.push(b);
+      if (!b) continue;
+      if (giantBuilding && Math.hypot(b.cx - giantBuilding.cx, b.cz - giantBuilding.cz) < giantBuilding.padRadius + b.padRadius) continue;
+      if (Math.hypot(b.cx - px, b.cz - pz) < MAX_DIST + b.padRadius) list.push(b);
     }
   }
   return list;
+}
+
+function refreshNearbyBuildings() {
+  currentBuildings = getNearbyBuildings(player.x, player.z);
+  if (giantBuilding && Math.hypot(giantBuilding.cx - player.x, giantBuilding.cz - player.z) < MAX_DIST + giantBuilding.padRadius) {
+    currentBuildings.push(giantBuilding);
+  }
+}
+
+function maybeSpawnGiant() {
+  if (giantSpawned || distanceWalked < GIANT_MILESTONE) return;
+  giantSpawned = true;
+  const fx = Math.sin(player.heading), fz = Math.cos(player.heading);
+  const aheadDist = 150 + hash2(1, 1, SEED + 424242) * 40;
+  const gx = player.x + fx * aheadDist;
+  const gz = player.z + fz * aheadDist;
+  giantBuilding = buildBuilding(0, 0, { giant: true, cx: gx, cz: gz });
+  showToast("Something massive looms on the horizon...");
 }
 
 function getNearbyTrees(px, pz) {
@@ -327,9 +406,20 @@ const visitedTrees = new Set();
 let currentTrees = [];
 let started = false;
 let bobPhase = 0;
+let giantBuilding = null;
+let giantSpawned = false;
 const keys = { forward: false, backward: false, left: false, right: false };
 
 bestEl.textContent = Math.floor(best);
+
+const toastEl = document.getElementById("toast");
+let toastTimer = null;
+function showToast(text, duration) {
+  toastEl.textContent = text;
+  toastEl.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove("show"), duration || 4500);
+}
 
 function updateHud() {
   distanceEl.textContent = Math.floor(distanceWalked);
@@ -344,6 +434,8 @@ function resetWorld(newSeed) {
   treesFound = 0;
   visitedTrees.clear();
   bobPhase = 0;
+  giantBuilding = null;
+  giantSpawned = false;
   updateHud();
 }
 
@@ -372,7 +464,7 @@ function update(dt) {
   if (keys.forward) moveAmt += MOVE_SPEED * dt;
   if (keys.backward) moveAmt -= MOVE_SPEED_BACK * dt;
 
-  currentBuildings = getNearbyBuildings(player.x, player.z);
+  refreshNearbyBuildings();
   currentTrees = getNearbyTrees(player.x, player.z);
 
   if (moveAmt !== 0) {
@@ -412,6 +504,7 @@ function update(dt) {
     }
   }
 
+  maybeSpawnGiant();
   updateHud();
 }
 
@@ -448,17 +541,17 @@ function drawBuildings(cam) {
   for (const b of currentBuildings) {
     for (const seg of b.walls) {
       const midx = (seg.ax + seg.bx) / 2, midz = (seg.az + seg.bz) / 2;
-      const c = project(midx, b.padHeight + WALL_HEIGHT / 2, midz, cam);
+      const c = project(midx, b.padHeight + b.wallHeight / 2, midz, cam);
       if (c.z < NEAR - 3 || c.z > MAX_DIST + 15) continue;
-      items.push({ dist: c.z, seg, padHeight: b.padHeight });
+      items.push({ dist: c.z, seg, padHeight: b.padHeight, wallHeight: b.wallHeight });
     }
   }
   items.sort((a, b) => b.dist - a.dist);
   for (const it of items) {
     const a = project(it.seg.ax, it.padHeight, it.seg.az, cam);
     const b = project(it.seg.bx, it.padHeight, it.seg.bz, cam);
-    const c = project(it.seg.bx, it.padHeight + WALL_HEIGHT, it.seg.bz, cam);
-    const d = project(it.seg.ax, it.padHeight + WALL_HEIGHT, it.seg.az, cam);
+    const c = project(it.seg.bx, it.padHeight + it.wallHeight, it.seg.bz, cam);
+    const d = project(it.seg.ax, it.padHeight + it.wallHeight, it.seg.az, cam);
     if (a.z <= NEAR || b.z <= NEAR || c.z <= NEAR || d.z <= NEAR) continue;
     const sa = toScreen(a), sb = toScreen(b), sc = toScreen(c), sd = toScreen(d);
     const t = Math.min(1, Math.max(0, it.dist / MAX_DIST));
@@ -500,15 +593,16 @@ function render() {
     bandPaths.tree.push(new Path2D());
   }
 
-  const N = GRID_RANGE * 2 + 1;
+  const N = GRID_N;
   const baseGX = Math.floor(player.x / CELL), baseGZ = Math.floor(player.z / CELL);
+  ensureGridHeights(baseGX, baseGZ);
   const proj = new Array(N);
   for (let rz = 0; rz < N; rz++) {
     proj[rz] = new Array(N);
     const wz = (baseGZ + rz - GRID_RANGE) * CELL;
     for (let rx = 0; rx < N; rx++) {
       const wx = (baseGX + rx - GRID_RANGE) * CELL;
-      const wy = terrainHeight(wx, wz);
+      const wy = gridHeightCache[rz * GRID_N + rx];
       proj[rz][rx] = project(wx, wy, wz, cam);
     }
   }
@@ -584,7 +678,7 @@ function loop(now) {
   if (started) {
     update(dt);
   } else {
-    currentBuildings = getNearbyBuildings(player.x, player.z);
+    refreshNearbyBuildings();
     currentTrees = getNearbyTrees(player.x, player.z);
   }
   render();
