@@ -1,8 +1,9 @@
 const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
-const distanceEl = document.getElementById("distance");
 const baconEl = document.getElementById("bacon");
-const bestEl = document.getElementById("best");
+const pantsScaredEl = document.getElementById("pants-scared");
+const bestBaconEl = document.getElementById("best-bacon");
+const bestPantsEl = document.getElementById("best-pants");
 const newWorldBtn = document.getElementById("new-world-btn");
 const overlay = document.getElementById("overlay");
 const startBtn = document.getElementById("start-btn");
@@ -48,7 +49,7 @@ const TREE_CELL = 9;
 const TREE_RANGE = Math.ceil(MAX_DIST / TREE_CELL) + 1;
 const TREE_DENSITY = 0.16;
 const TREE_RADIUS = 0.55;
-const BACON_RADIUS = 5;
+const BACON_TOUCH_RADIUS = 1.0;
 
 const BUILDING_CELL = 46;
 const BUILDING_RANGE = Math.ceil((MAX_DIST + 25) / BUILDING_CELL) + 1;
@@ -63,6 +64,12 @@ const PANTS_DENSITY = 0.09;
 const PANTS_NOTICE_RADIUS = 7;
 const PANTS_CALM_RADIUS = PANTS_NOTICE_RADIUS * 2.2;
 const PANTS_FLEE_SPEED = 6.5;
+const PANTS_WAIST_HALF = 0.42;
+const PANTS_DEPTH_HALF = 0.22;
+const PANTS_LEG_TOP_HALF = PANTS_WAIST_HALF * 0.5;
+const PANTS_LEG_LEN = 0.78;
+const PANTS_ANKLE_HALF = PANTS_LEG_TOP_HALF * 0.8;
+const PANTS_ANKLE_DEPTH_HALF = 0.15;
 
 const CHASE_DIST = 9;
 const CHASE_HEIGHT = 2.8;
@@ -77,13 +84,14 @@ const TURN_SPEED = 2.3;
 const CHAR_RADIUS = 0.55;
 const SQUISH_AMOUNT = 0.16;
 
-const BEST_KEY = "meatflap-wander-best";
+const BEST_BACON_KEY = "meatflap-wander-best-bacon";
+const BEST_PANTS_KEY = "meatflap-wander-best-pants";
 const BG_COLOR = [13, 15, 20];
 const GRID_NEAR = [90, 170, 210];
 const TREE_NEAR = [77, 255, 159];
 const BUILDING_NEAR = [255, 195, 110];
 const BACON_NEAR = [255, 140, 105];
-const PANTS_NEAR = [90, 150, 255];
+const PANTS_NEAR = [60, 140, 255];
 const CHAR_COLOR = "#ff4d8d";
 
 function lerp(a, b, t) {
@@ -249,7 +257,7 @@ function buildBuilding(ix, iz) {
 
   const width = 8 + rng() * 10;
   const depth = 8 + rng() * 10;
-  const roomsWanted = 1 + Math.floor(rng() * 4);
+  const roomsWanted = 1 + Math.floor(rng() * 2);
 
   const padHeight = terrainHeightRaw(cx, cz);
   const footRadius = Math.hypot(width, depth) / 2 + 1.6;
@@ -355,7 +363,7 @@ function treeSegments(t) {
 }
 
 function baconSegments(item) {
-  const half = 0.32;
+  const half = 0.4;
   const y = item.y + 0.05;
   const cosR = Math.cos(item.rot), sinR = Math.sin(item.rot);
   const rot = (lx, lz) => ({
@@ -363,14 +371,14 @@ function baconSegments(item) {
     y,
     z: item.z + lx * sinR + lz * cosR,
   });
-  const M = 4;
+  const M = 5;
   const topPts = [], botPts = [];
   for (let i = 0; i <= M; i++) {
     const t = i / M;
     const lx = (t - 0.5) * 2 * half;
-    const wave = Math.sin(t * Math.PI * 2.4) * 0.07;
-    topPts.push(rot(lx, 0.13 + wave));
-    botPts.push(rot(lx, -0.13 + wave));
+    const wave = Math.sin(t * Math.PI * 2.6) * 0.09;
+    topPts.push(rot(lx, 0.16 + wave));
+    botPts.push(rot(lx, -0.16 + wave));
   }
   const segs = [];
   for (let i = 0; i < M; i++) {
@@ -379,6 +387,9 @@ function baconSegments(item) {
   }
   segs.push([topPts[0], botPts[0]]);
   segs.push([topPts[M], botPts[M]]);
+  for (let i = 1; i < M; i++) {
+    segs.push([topPts[i], botPts[i]]);
+  }
   return segs;
 }
 
@@ -431,9 +442,11 @@ function getNearbyPants(px, pz) {
 }
 
 function updatePants(dt) {
+  let scares = 0;
   for (const st of pantsState.values()) {
     const dist = Math.hypot(st.x - player.x, st.z - player.z);
     if (dist < PANTS_NOTICE_RADIUS) {
+      if (!st.fleeing) scares++;
       st.fleeing = true;
       st.fleeHeading = Math.atan2(st.x - player.x, st.z - player.z);
     } else if (dist > PANTS_CALM_RADIUS) {
@@ -446,31 +459,42 @@ function updatePants(dt) {
       st.legPhase += dt * 16;
     }
   }
+  return scares;
 }
 
 function pantsSegments(p) {
-  const waistW = 0.42;
-  const legLen = 0.5;
-  const bounce = p.fleeing ? Math.abs(Math.sin(p.legPhase)) * 0.08 : 0;
-  const waistY = p.y + legLen + bounce;
+  const bounce = p.fleeing ? Math.abs(Math.sin(p.legPhase)) * 0.09 : 0;
+  const waistY = p.y + PANTS_LEG_LEN + bounce;
   const fx = Math.sin(p.heading), fz = Math.cos(p.heading);
   const rx = Math.cos(p.heading), rz = -Math.sin(p.heading);
-  const swing = p.fleeing ? Math.sin(p.legPhase) * 0.22 : 0;
+  const swing = p.fleeing ? Math.sin(p.legPhase) * 0.32 : 0;
   const pt = (right, fwd, y) => ({
     x: p.x + rx * right + fx * fwd,
     y,
     z: p.z + rz * right + fz * fwd,
   });
-  const waistL = pt(-waistW / 2, 0, waistY);
-  const waistR = pt(waistW / 2, 0, waistY);
-  const kneeL = pt(-waistW / 2, swing * 0.5, p.y + legLen * 0.45 + bounce);
-  const kneeR = pt(waistW / 2, -swing * 0.5, p.y + legLen * 0.45 + bounce);
-  const footL = pt(-waistW / 2, swing, p.y);
-  const footR = pt(waistW / 2, -swing, p.y);
+
+  const waistTLf = pt(-PANTS_WAIST_HALF, PANTS_DEPTH_HALF, waistY);
+  const waistTRf = pt(PANTS_WAIST_HALF, PANTS_DEPTH_HALF, waistY);
+  const waistTRb = pt(PANTS_WAIST_HALF, -PANTS_DEPTH_HALF, waistY);
+  const waistTLb = pt(-PANTS_WAIST_HALF, -PANTS_DEPTH_HALF, waistY);
+
+  const legTopLf = pt(-PANTS_LEG_TOP_HALF, PANTS_DEPTH_HALF, waistY);
+  const legTopLb = pt(-PANTS_LEG_TOP_HALF, -PANTS_DEPTH_HALF, waistY);
+  const legTopRf = pt(PANTS_LEG_TOP_HALF, PANTS_DEPTH_HALF, waistY);
+  const legTopRb = pt(PANTS_LEG_TOP_HALF, -PANTS_DEPTH_HALF, waistY);
+
+  const ankleLf = pt(-PANTS_ANKLE_HALF, PANTS_ANKLE_DEPTH_HALF + swing, p.y + bounce);
+  const ankleLb = pt(-PANTS_ANKLE_HALF, -PANTS_ANKLE_DEPTH_HALF + swing, p.y + bounce);
+  const ankleRf = pt(PANTS_ANKLE_HALF, PANTS_ANKLE_DEPTH_HALF - swing, p.y + bounce);
+  const ankleRb = pt(PANTS_ANKLE_HALF, -PANTS_ANKLE_DEPTH_HALF - swing, p.y + bounce);
+
   return [
-    [waistL, waistR],
-    [waistL, kneeL], [kneeL, footL],
-    [waistR, kneeR], [kneeR, footR],
+    [waistTLf, waistTRf], [waistTRf, waistTRb], [waistTRb, waistTLb], [waistTLb, waistTLf],
+    [legTopLf, legTopLb],
+    [legTopLf, ankleLf], [legTopLb, ankleLb], [ankleLf, ankleLb],
+    [legTopRf, legTopRb],
+    [legTopRf, ankleRf], [legTopRb, ankleRb], [ankleRf, ankleRb],
   ];
 }
 
@@ -537,9 +561,10 @@ function toScreen(p) {
 }
 
 let player = { x: 0, z: 0, heading: 0 };
-let distanceWalked = 0;
-let best = Number(localStorage.getItem(BEST_KEY) || 0);
+let bestBacon = Number(localStorage.getItem(BEST_BACON_KEY) || 0);
+let bestPantsScared = Number(localStorage.getItem(BEST_PANTS_KEY) || 0);
 let baconCollected = 0;
+let pantsScared = 0;
 const collectedBacon = new Set();
 let currentTrees = [];
 let currentBacon = [];
@@ -548,13 +573,13 @@ let started = false;
 let squishPhase = 0;
 const keys = { forward: false, backward: false, left: false, right: false };
 
-bestEl.textContent = Math.floor(best);
-
 function updateHud() {
-  distanceEl.textContent = Math.floor(distanceWalked);
   baconEl.textContent = baconCollected;
-  bestEl.textContent = Math.floor(best);
+  pantsScaredEl.textContent = pantsScared;
+  bestBaconEl.textContent = bestBacon;
+  bestPantsEl.textContent = bestPantsScared;
 }
+updateHud();
 
 function refreshCurrentBacon() {
   currentBacon = [];
@@ -568,8 +593,8 @@ function refreshCurrentBacon() {
 function resetWorld(newSeed) {
   SEED = newSeed;
   player = { x: 0, z: 0, heading: 0 };
-  distanceWalked = 0;
   baconCollected = 0;
+  pantsScared = 0;
   collectedBacon.clear();
   pantsState.clear();
   squishPhase = 0;
@@ -604,8 +629,15 @@ function update(dt) {
   currentBuildings = getNearbyBuildings(player.x, player.z);
   currentTrees = getNearbyTrees(player.x, player.z);
   refreshCurrentBacon();
-  updatePants(dt);
+  const scares = updatePants(dt);
   currentPants = getNearbyPants(player.x, player.z);
+  if (scares > 0) {
+    pantsScared += scares;
+    if (pantsScared > bestPantsScared) {
+      bestPantsScared = pantsScared;
+      localStorage.setItem(BEST_PANTS_KEY, String(bestPantsScared));
+    }
+  }
 
   if (moveAmt !== 0) {
     let nx = player.x + fx * moveAmt;
@@ -628,18 +660,17 @@ function update(dt) {
     }
     player.x = nx;
     player.z = nz;
-    distanceWalked += Math.abs(moveAmt);
     squishPhase += Math.abs(moveAmt) * 1.6;
-    if (distanceWalked > best) {
-      best = distanceWalked;
-      localStorage.setItem(BEST_KEY, String(Math.floor(best)));
-    }
   }
 
   for (const item of currentBacon) {
-    if (Math.hypot(item.x - player.x, item.z - player.z) < BACON_RADIUS) {
+    if (Math.hypot(item.x - player.x, item.z - player.z) < BACON_TOUCH_RADIUS) {
       collectedBacon.add(item.key);
       baconCollected++;
+      if (baconCollected > bestBacon) {
+        bestBacon = baconCollected;
+        localStorage.setItem(BEST_BACON_KEY, String(bestBacon));
+      }
     }
   }
   currentBacon = currentBacon.filter((item) => !collectedBacon.has(item.key));
