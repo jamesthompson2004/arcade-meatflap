@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flappy Flap — Meatflap Arcade</title>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="flappy.css">
+</head>
+<body>
+  <a class="back-link" href="../../">← Arcade</a>
+
+  <div class="flappy-wrap">
+    <h1>Flappy Flap</h1>
+    <div class="hud">
+      <span>Score: <strong id="score">0</strong></span>
+      <span>Best: <strong id="best">0</strong></span>
+    </div>
+
+    <canvas id="board" width="360" height="540"></canvas>
+
+    <p class="hint">Space / Up / Click / Tap to flap.</p>
+
+    <div id="overlay" class="overlay">
+      <p id="overlay-text">Tap to Fly</p>
+      <button id="restart-btn">Start</button>
+    </div>
+  </div>
+
+  <script src="flappy.js"></script>
+</body>
+</html>

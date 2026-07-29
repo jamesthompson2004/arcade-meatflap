@@ -113,6 +113,15 @@ body {
   font-size: 2.5rem;
 }
 
+.flappy-thumb {
+  background: linear-gradient(#1a2740, #16291e 85%);
+}
+
+.flappy-thumb::after {
+  content: "🐦";
+  font-size: 2.5rem;
+}
+
 .soon-thumb {
   background: #1b1f2a;
   color: var(--muted);
