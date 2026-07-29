@@ -14,11 +14,15 @@
     <h1>Wander</h1>
     <p class="lead">You're playing as <strong>Nubby</strong>.</p>
     <div class="hud">
-      <span>Bacon: <strong id="bacon">0</strong></span>
-      <span>Pants scared: <strong id="pants-scared">0</strong></span>
-      <span>Best bacon: <strong id="best-bacon">0</strong></span>
-      <span>Best pants: <strong id="best-pants">0</strong></span>
-      <button id="new-world-btn" class="mini-btn" type="button">🔀 New World</button>
+      <div class="hud-row">
+        <span>Most bacon collected: <strong id="best-bacon">0</strong></span>
+        <span>Most pants scared: <strong id="best-pants">0</strong></span>
+      </div>
+      <div class="hud-row">
+        <span>Bacon collected: <strong id="bacon">0</strong></span>
+        <span>Pants scared: <strong id="pants-scared">0</strong></span>
+        <button id="new-world-btn" class="mini-btn" type="button">🔀 New World</button>
+      </div>
     </div>
 
     <canvas id="board" width="840" height="480"></canvas>

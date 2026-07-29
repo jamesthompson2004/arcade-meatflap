@@ -62,14 +62,20 @@ const PANTS_CELL = 13;
 const PANTS_RANGE = Math.ceil(MAX_DIST / PANTS_CELL) + 1;
 const PANTS_DENSITY = 0.09;
 const PANTS_NOTICE_RADIUS = 7;
-const PANTS_CALM_RADIUS = PANTS_NOTICE_RADIUS * 2.2;
 const PANTS_FLEE_SPEED = 6.5;
-const PANTS_WAIST_HALF = 0.42;
-const PANTS_DEPTH_HALF = 0.22;
-const PANTS_LEG_TOP_HALF = PANTS_WAIST_HALF * 0.5;
-const PANTS_LEG_LEN = 0.78;
-const PANTS_ANKLE_HALF = PANTS_LEG_TOP_HALF * 0.8;
-const PANTS_ANKLE_DEPTH_HALF = 0.15;
+const PANTS_FLEE_DURATION = 1.5;
+const PANTS_BUBBLE_DURATION = 1.15;
+const PANTS_WAIST_HALF = 0.58;
+const PANTS_DEPTH_HALF = 0.3;
+const PANTS_BELT_HEIGHT = 0.16;
+const PANTS_LEG_TOP_HALF = PANTS_WAIST_HALF * 0.52;
+const PANTS_LEG_LEN = 1.05;
+const PANTS_ANKLE_HALF = PANTS_LEG_TOP_HALF * 0.82;
+const PANTS_ANKLE_DEPTH_HALF = 0.2;
+const PANTS_PHRASES = [
+  "Hee hee!", "Eek!", "Nope nope nope!", "Whee!", "Yikes!",
+  "Can't catch me!", "Squeak!", "Not today!", "Byeee!", "Tag, you're it!",
+];
 
 const CHASE_DIST = 9;
 const CHASE_HEIGHT = 2.8;
@@ -363,35 +369,36 @@ function treeSegments(t) {
 }
 
 function baconSegments(item) {
-  const half = 0.4;
-  const y = item.y + 0.05;
+  const height = 0.6;
   const cosR = Math.cos(item.rot), sinR = Math.sin(item.rot);
-  const rot = (lx, lz) => ({
-    x: item.x + lx * cosR - lz * sinR,
-    y,
-    z: item.z + lx * sinR + lz * cosR,
+  const place = (right, fwd, up) => ({
+    x: item.x + right * cosR - fwd * sinR,
+    y: item.y + up,
+    z: item.z + right * sinR + fwd * cosR,
   });
   const M = 5;
-  const topPts = [], botPts = [];
+  const frontPts = [], backPts = [];
   for (let i = 0; i <= M; i++) {
     const t = i / M;
-    const lx = (t - 0.5) * 2 * half;
+    const up = t * height;
     const wave = Math.sin(t * Math.PI * 2.6) * 0.09;
-    topPts.push(rot(lx, 0.16 + wave));
-    botPts.push(rot(lx, -0.16 + wave));
+    frontPts.push(place(wave, 0.055, up));
+    backPts.push(place(wave, -0.055, up));
   }
   const segs = [];
   for (let i = 0; i < M; i++) {
-    segs.push([topPts[i], topPts[i + 1]]);
-    segs.push([botPts[i], botPts[i + 1]]);
+    segs.push([frontPts[i], frontPts[i + 1]]);
+    segs.push([backPts[i], backPts[i + 1]]);
   }
-  segs.push([topPts[0], botPts[0]]);
-  segs.push([topPts[M], botPts[M]]);
+  segs.push([frontPts[0], backPts[0]]);
+  segs.push([frontPts[M], backPts[M]]);
   for (let i = 1; i < M; i++) {
-    segs.push([topPts[i], botPts[i]]);
+    segs.push([frontPts[i], backPts[i]]);
   }
   return segs;
 }
+
+const goneKeys = new Set();
 
 function getNearbyPantsBase(px, pz) {
   const list = [];
@@ -399,6 +406,8 @@ function getNearbyPantsBase(px, pz) {
   for (let dz = -PANTS_RANGE; dz <= PANTS_RANGE; dz++) {
     for (let dx = -PANTS_RANGE; dx <= PANTS_RANGE; dx++) {
       const ix = cix + dx, iz = ciz + dz;
+      const key = ix + "_" + iz;
+      if (goneKeys.has(key)) continue;
       const r = hash2(ix, iz, SEED + 662211);
       if (r >= PANTS_DENSITY) continue;
       const jx = hash2(ix, iz, SEED + 662222);
@@ -406,7 +415,7 @@ function getNearbyPantsBase(px, pz) {
       const bx = (ix + 0.5 + (jx - 0.5) * 0.7) * PANTS_CELL;
       const bz = (iz + 0.5 + (jz - 0.5) * 0.7) * PANTS_CELL;
       if (Math.hypot(bx - px, bz - pz) > MAX_DIST + PANTS_CELL) continue;
-      list.push({ key: ix + "_" + iz, baseX: bx, baseZ: bz });
+      list.push({ key, baseX: bx, baseZ: bz });
     }
   }
   return list;
@@ -422,7 +431,7 @@ function getNearbyPants(px, pz) {
     activeKeys.add(base.key);
     let st = pantsState.get(base.key);
     if (!st) {
-      st = { x: base.baseX, z: base.baseZ, fleeing: false, fleeHeading: 0, legPhase: 0 };
+      st = { x: base.baseX, z: base.baseZ, fleeing: false, fleeHeading: 0, legPhase: 0, fleeTimer: 0, bubbleTimer: 0, bubbleText: "" };
       pantsState.set(base.key, st);
     }
     result.push({
@@ -433,6 +442,8 @@ function getNearbyPants(px, pz) {
       heading: st.fleeHeading,
       legPhase: st.legPhase,
       fleeing: st.fleeing,
+      bubbleTimer: st.bubbleTimer,
+      bubbleText: st.bubbleText,
     });
   }
   for (const k of Array.from(pantsState.keys())) {
@@ -443,54 +454,74 @@ function getNearbyPants(px, pz) {
 
 function updatePants(dt) {
   let scares = 0;
-  for (const st of pantsState.values()) {
-    const dist = Math.hypot(st.x - player.x, st.z - player.z);
-    if (dist < PANTS_NOTICE_RADIUS) {
-      if (!st.fleeing) scares++;
-      st.fleeing = true;
-      st.fleeHeading = Math.atan2(st.x - player.x, st.z - player.z);
-    } else if (dist > PANTS_CALM_RADIUS) {
-      st.fleeing = false;
+  for (const [key, st] of pantsState.entries()) {
+    if (!st.fleeing) {
+      const dist = Math.hypot(st.x - player.x, st.z - player.z);
+      if (dist < PANTS_NOTICE_RADIUS) {
+        st.fleeing = true;
+        st.fleeHeading = Math.atan2(st.x - player.x, st.z - player.z);
+        st.fleeTimer = PANTS_FLEE_DURATION;
+        st.bubbleTimer = PANTS_BUBBLE_DURATION;
+        st.bubbleText = PANTS_PHRASES[Math.floor(Math.random() * PANTS_PHRASES.length)];
+        scares++;
+      }
     }
     if (st.fleeing) {
       const fx = Math.sin(st.fleeHeading), fz = Math.cos(st.fleeHeading);
       st.x += fx * PANTS_FLEE_SPEED * dt;
       st.z += fz * PANTS_FLEE_SPEED * dt;
       st.legPhase += dt * 16;
+      st.fleeTimer -= dt;
+      if (st.bubbleTimer > 0) st.bubbleTimer -= dt;
+      if (st.fleeTimer <= 0) {
+        goneKeys.add(key);
+        pantsState.delete(key);
+      }
     }
   }
   return scares;
 }
 
 function pantsSegments(p) {
-  const bounce = p.fleeing ? Math.abs(Math.sin(p.legPhase)) * 0.09 : 0;
-  const waistY = p.y + PANTS_LEG_LEN + bounce;
+  const bounce = p.fleeing ? Math.abs(Math.sin(p.legPhase)) * 0.1 : 0;
+  const beltBottomY = p.y + PANTS_LEG_LEN + bounce;
+  const beltTopY = beltBottomY + PANTS_BELT_HEIGHT;
   const fx = Math.sin(p.heading), fz = Math.cos(p.heading);
   const rx = Math.cos(p.heading), rz = -Math.sin(p.heading);
-  const swing = p.fleeing ? Math.sin(p.legPhase) * 0.32 : 0;
+  const swing = p.fleeing ? Math.sin(p.legPhase) * 0.36 : 0;
   const pt = (right, fwd, y) => ({
     x: p.x + rx * right + fx * fwd,
     y,
     z: p.z + rz * right + fz * fwd,
   });
 
-  const waistTLf = pt(-PANTS_WAIST_HALF, PANTS_DEPTH_HALF, waistY);
-  const waistTRf = pt(PANTS_WAIST_HALF, PANTS_DEPTH_HALF, waistY);
-  const waistTRb = pt(PANTS_WAIST_HALF, -PANTS_DEPTH_HALF, waistY);
-  const waistTLb = pt(-PANTS_WAIST_HALF, -PANTS_DEPTH_HALF, waistY);
+  const beltTLf = pt(-PANTS_WAIST_HALF, PANTS_DEPTH_HALF, beltTopY);
+  const beltTRf = pt(PANTS_WAIST_HALF, PANTS_DEPTH_HALF, beltTopY);
+  const beltTRb = pt(PANTS_WAIST_HALF, -PANTS_DEPTH_HALF, beltTopY);
+  const beltTLb = pt(-PANTS_WAIST_HALF, -PANTS_DEPTH_HALF, beltTopY);
+  const beltBLf = pt(-PANTS_WAIST_HALF, PANTS_DEPTH_HALF, beltBottomY);
+  const beltBRf = pt(PANTS_WAIST_HALF, PANTS_DEPTH_HALF, beltBottomY);
+  const beltBRb = pt(PANTS_WAIST_HALF, -PANTS_DEPTH_HALF, beltBottomY);
+  const beltBLb = pt(-PANTS_WAIST_HALF, -PANTS_DEPTH_HALF, beltBottomY);
 
-  const legTopLf = pt(-PANTS_LEG_TOP_HALF, PANTS_DEPTH_HALF, waistY);
-  const legTopLb = pt(-PANTS_LEG_TOP_HALF, -PANTS_DEPTH_HALF, waistY);
-  const legTopRf = pt(PANTS_LEG_TOP_HALF, PANTS_DEPTH_HALF, waistY);
-  const legTopRb = pt(PANTS_LEG_TOP_HALF, -PANTS_DEPTH_HALF, waistY);
+  const legTopLf = pt(-PANTS_LEG_TOP_HALF, PANTS_DEPTH_HALF, beltBottomY);
+  const legTopLb = pt(-PANTS_LEG_TOP_HALF, -PANTS_DEPTH_HALF, beltBottomY);
+  const legTopRf = pt(PANTS_LEG_TOP_HALF, PANTS_DEPTH_HALF, beltBottomY);
+  const legTopRb = pt(PANTS_LEG_TOP_HALF, -PANTS_DEPTH_HALF, beltBottomY);
 
   const ankleLf = pt(-PANTS_ANKLE_HALF, PANTS_ANKLE_DEPTH_HALF + swing, p.y + bounce);
   const ankleLb = pt(-PANTS_ANKLE_HALF, -PANTS_ANKLE_DEPTH_HALF + swing, p.y + bounce);
   const ankleRf = pt(PANTS_ANKLE_HALF, PANTS_ANKLE_DEPTH_HALF - swing, p.y + bounce);
   const ankleRb = pt(PANTS_ANKLE_HALF, -PANTS_ANKLE_DEPTH_HALF - swing, p.y + bounce);
 
+  const crotch = pt(0, 0, beltBottomY - 0.05);
+  const seamTop = pt(0, PANTS_DEPTH_HALF, beltBottomY);
+
   return [
-    [waistTLf, waistTRf], [waistTRf, waistTRb], [waistTRb, waistTLb], [waistTLb, waistTLf],
+    [beltTLf, beltTRf], [beltTRf, beltTRb], [beltTRb, beltTLb], [beltTLb, beltTLf],
+    [beltBLf, beltBRf], [beltBRf, beltBRb], [beltBRb, beltBLb], [beltBLb, beltBLf],
+    [beltTLf, beltBLf], [beltTRf, beltBRf], [beltTRb, beltBRb], [beltTLb, beltBLb],
+    [seamTop, crotch],
     [legTopLf, legTopLb],
     [legTopLf, ankleLf], [legTopLb, ankleLb], [ankleLf, ankleLb],
     [legTopRf, legTopRb],
@@ -555,6 +586,23 @@ function clipNear(a, b) {
   return [a, b];
 }
 
+function clipPolygonNear(points) {
+  const result = [];
+  const n = points.length;
+  for (let i = 0; i < n; i++) {
+    const cur = points[i];
+    const next = points[(i + 1) % n];
+    const curIn = cur.z > NEAR;
+    const nextIn = next.z > NEAR;
+    if (curIn) result.push(cur);
+    if (curIn !== nextIn) {
+      const t = (NEAR - cur.z) / (next.z - cur.z);
+      result.push(lerp3(cur, next, t));
+    }
+  }
+  return result;
+}
+
 function toScreen(p) {
   const scale = FOCAL / p.z;
   return { sx: CX + p.x * scale, sy: CY - p.y * scale };
@@ -597,6 +645,7 @@ function resetWorld(newSeed) {
   pantsScared = 0;
   collectedBacon.clear();
   pantsState.clear();
+  goneKeys.clear();
   squishPhase = 0;
   updateHud();
 }
@@ -722,16 +771,15 @@ function drawBuildings(cam) {
     const b = project(it.seg.bx, it.padHeight, it.seg.bz, cam);
     const c = project(it.seg.bx, it.padHeight + WALL_HEIGHT, it.seg.bz, cam);
     const d = project(it.seg.ax, it.padHeight + WALL_HEIGHT, it.seg.az, cam);
-    if (a.z <= NEAR || b.z <= NEAR || c.z <= NEAR || d.z <= NEAR) continue;
-    const sa = toScreen(a), sb = toScreen(b), sc = toScreen(c), sd = toScreen(d);
+    const poly = clipPolygonNear([a, b, c, d]);
+    if (poly.length < 3) continue;
+    const screenPts = poly.map(toScreen);
     const t = Math.min(1, Math.max(0, it.dist / MAX_DIST));
     const fillA = lerp(0.92, 0, t);
     const edgeA = lerp(1, 0, t);
     ctx.beginPath();
-    ctx.moveTo(sa.sx, sa.sy);
-    ctx.lineTo(sb.sx, sb.sy);
-    ctx.lineTo(sc.sx, sc.sy);
-    ctx.lineTo(sd.sx, sd.sy);
+    ctx.moveTo(screenPts[0].sx, screenPts[0].sy);
+    for (let i = 1; i < screenPts.length; i++) ctx.lineTo(screenPts[i].sx, screenPts[i].sy);
     ctx.closePath();
     ctx.fillStyle = `rgba(16,20,28,${fillA.toFixed(3)})`;
     ctx.fill();
@@ -742,6 +790,49 @@ function drawBuildings(cam) {
     ctx.lineWidth = 1.3;
     ctx.stroke();
     ctx.shadowBlur = 0;
+  }
+}
+
+function drawThoughtBubble(sx, sy, text, alpha) {
+  ctx.font = "13px system-ui, sans-serif";
+  const padX = 9, padY = 6;
+  const metrics = ctx.measureText(text);
+  const w = metrics.width + padX * 2;
+  const h = 14 + padY * 2;
+  const bx = sx - w / 2, by = sy - h - 16;
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = "rgba(255,255,255,0.94)";
+  ctx.strokeStyle = "rgba(20,20,30,0.85)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(bx, by, w, h, 9);
+  else ctx.rect(bx, by, w, h);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(sx - 5, by + h + 5, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(sx - 1, by + h + 13, 2.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "rgba(20,20,30,0.92)";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, sx, by + h / 2 + 1);
+  ctx.globalAlpha = 1;
+}
+
+function drawPantsBubbles(cam) {
+  for (const p of currentPants) {
+    if (!p.bubbleTimer || p.bubbleTimer <= 0) continue;
+    const headY = p.y + PANTS_LEG_LEN + PANTS_BELT_HEIGHT + 0.3;
+    const proj = project(p.x, headY, p.z, cam);
+    if (proj.z <= NEAR) continue;
+    const screen = toScreen(proj);
+    const alpha = Math.min(1, p.bubbleTimer / 0.35);
+    drawThoughtBubble(screen.sx, screen.sy, p.bubbleText, alpha);
   }
 }
 
@@ -830,9 +921,11 @@ function render() {
     ctx.shadowColor = baconBandColor[i];
     ctx.strokeStyle = baconBandColor[i];
     ctx.stroke(bandPaths.bacon[i]);
+    ctx.lineWidth = 1.8;
     ctx.shadowColor = pantsBandColor[i];
     ctx.strokeStyle = pantsBandColor[i];
     ctx.stroke(bandPaths.pants[i]);
+    ctx.lineWidth = 1;
   }
   ctx.shadowBlur = 0;
 
@@ -869,6 +962,8 @@ function render() {
     ctx.arc(es.sx, es.sy, Math.max(2, (FOCAL / eyeCam.z) * 0.09), 0, Math.PI * 2);
     ctx.fill();
   }
+
+  drawPantsBubbles(cam);
 }
 
 let lastTime = null;
