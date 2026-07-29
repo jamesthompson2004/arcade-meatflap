@@ -1,7 +1,7 @@
 const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
 const distanceEl = document.getElementById("distance");
-const treesEl = document.getElementById("trees");
+const baconEl = document.getElementById("bacon");
 const bestEl = document.getElementById("best");
 const newWorldBtn = document.getElementById("new-world-btn");
 const overlay = document.getElementById("overlay");
@@ -48,14 +48,21 @@ const TREE_CELL = 9;
 const TREE_RANGE = Math.ceil(MAX_DIST / TREE_CELL) + 1;
 const TREE_DENSITY = 0.16;
 const TREE_RADIUS = 0.55;
-const DISCOVER_RADIUS = 5;
+const BACON_RADIUS = 5;
 
 const BUILDING_CELL = 46;
 const BUILDING_RANGE = Math.ceil((MAX_DIST + 25) / BUILDING_CELL) + 1;
 const BUILDING_DENSITY = 0.28;
 const DOOR_WIDTH = 1.8;
 const MIN_ROOM_SIZE = 3.2;
-const GIANT_MILESTONE = 1000;
+const WALL_HEIGHT = 3;
+
+const PANTS_CELL = 13;
+const PANTS_RANGE = Math.ceil(MAX_DIST / PANTS_CELL) + 1;
+const PANTS_DENSITY = 0.09;
+const PANTS_NOTICE_RADIUS = 7;
+const PANTS_CALM_RADIUS = PANTS_NOTICE_RADIUS * 2.2;
+const PANTS_FLEE_SPEED = 6.5;
 
 const CHASE_DIST = 9;
 const CHASE_HEIGHT = 2.8;
@@ -68,12 +75,15 @@ const MOVE_SPEED = 9;
 const MOVE_SPEED_BACK = 5.5;
 const TURN_SPEED = 2.3;
 const CHAR_RADIUS = 0.55;
+const SQUISH_AMOUNT = 0.16;
 
 const BEST_KEY = "meatflap-wander-best";
 const BG_COLOR = [13, 15, 20];
 const GRID_NEAR = [90, 170, 210];
 const TREE_NEAR = [77, 255, 159];
 const BUILDING_NEAR = [255, 195, 110];
+const BACON_NEAR = [255, 140, 105];
+const PANTS_NEAR = [90, 150, 255];
 const CHAR_COLOR = "#ff4d8d";
 
 function lerp(a, b, t) {
@@ -93,11 +103,15 @@ function bandRgba(near, t, alpha) {
 
 let gridBandColor = [];
 let treeBandColor = [];
+let baconBandColor = [];
+let pantsBandColor = [];
 for (let i = 0; i < BANDS; i++) {
   const t = i / (BANDS - 1);
   const alpha = 1 - t;
   gridBandColor.push(bandRgba(GRID_NEAR, t, alpha));
   treeBandColor.push(bandRgba(TREE_NEAR, t, alpha));
+  baconBandColor.push(bandRgba(BACON_NEAR, t, alpha));
+  pantsBandColor.push(bandRgba(PANTS_NEAR, t, alpha));
 }
 
 function hash2(ix, iz, seed) {
@@ -177,6 +191,15 @@ function addWallSeg(list, ax, az, bx, bz, gap) {
   if (g1 < 0.98) list.push({ ax: lerp(ax, bx, g1), az: lerp(az, bz, g1), bx, bz });
 }
 
+function pointToSegmentDist(px, pz, seg) {
+  const dx = seg.bx - seg.ax, dz = seg.bz - seg.az;
+  const lenSq = dx * dx + dz * dz;
+  let t = lenSq > 0 ? ((px - seg.ax) * dx + (pz - seg.az) * dz) / lenSq : 0;
+  t = Math.max(0, Math.min(1, t));
+  const cx2 = seg.ax + dx * t, cz2 = seg.az + dz * t;
+  return Math.hypot(px - cx2, pz - cz2);
+}
+
 function makeRng(ix, iz, seedBase) {
   let n = 0;
   return () => hash2(ix, iz, seedBase + (n++) * 97 + 13);
@@ -216,21 +239,17 @@ function buildFloorplan(width, depth, roomsWanted, rng) {
   return partitions;
 }
 
-function buildBuilding(ix, iz, opts) {
-  opts = opts || {};
-  const giant = !!opts.giant;
-  if (!giant && hash2(ix, iz, SEED + 55555) >= BUILDING_DENSITY) return null;
+function buildBuilding(ix, iz) {
+  if (hash2(ix, iz, SEED + 55555) >= BUILDING_DENSITY) return null;
 
-  const rng = makeRng(ix, iz, SEED + (giant ? 999000 : 0));
+  const rng = makeRng(ix, iz, SEED);
   const jx = rng(), jz = rng();
-  const cx = opts.cx !== undefined ? opts.cx : (ix + 0.5 + (jx - 0.5) * 0.4) * BUILDING_CELL;
-  const cz = opts.cz !== undefined ? opts.cz : (iz + 0.5 + (jz - 0.5) * 0.4) * BUILDING_CELL;
+  const cx = (ix + 0.5 + (jx - 0.5) * 0.4) * BUILDING_CELL;
+  const cz = (iz + 0.5 + (jz - 0.5) * 0.4) * BUILDING_CELL;
 
-  const width = giant ? 34 + rng() * 12 : 8 + rng() * 10;
-  const depth = giant ? 30 + rng() * 12 : 8 + rng() * 10;
-  const roomsWanted = giant ? 9 + Math.floor(rng() * 5) : 1 + Math.floor(rng() * 4);
-  const wallHeight = giant ? 6.5 : 3;
-  const doorCount = giant ? 2 : 1;
+  const width = 8 + rng() * 10;
+  const depth = 8 + rng() * 10;
+  const roomsWanted = 1 + Math.floor(rng() * 4);
 
   const padHeight = terrainHeightRaw(cx, cz);
   const footRadius = Math.hypot(width, depth) / 2 + 1.6;
@@ -249,11 +268,10 @@ function buildBuilding(ix, iz, opts) {
     [NE, SE, depth],
     [SW, NW, depth],
   ];
-  const doorSides = new Set();
-  while (doorSides.size < doorCount) doorSides.add(Math.floor(rng() * 4));
+  const doorSide = Math.floor(rng() * 4);
   sides.forEach((s, i) => {
     const [a, b, len] = s;
-    const gap = doorSides.has(i) ? { center: 0.5, half: (DOOR_WIDTH / 2) / len } : null;
+    const gap = i === doorSide ? { center: 0.5, half: (DOOR_WIDTH / 2) / len } : null;
     addWallSeg(walls, a.x, a.z, b.x, b.z, gap);
   });
 
@@ -262,7 +280,21 @@ function buildBuilding(ix, iz, opts) {
     addWallSeg(walls, cx + p.ax, cz + p.az, cx + p.bx, cz + p.bz, p.gap);
   }
 
-  return { cx, cz, width, depth, padHeight, footRadius, padRadius, walls, wallHeight, giant, key: giant ? "giant" : ix + "_" + iz };
+  const bacon = [];
+  const baconCount = 1 + Math.floor(rng() * 3);
+  for (let i = 0; i < baconCount; i++) {
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const lx = (rng() - 0.5) * (width - 2.4);
+      const lz = (rng() - 0.5) * (depth - 2.4);
+      const wx = cx + lx, wz = cz + lz;
+      if (walls.every((w) => pointToSegmentDist(wx, wz, w) > 0.9)) {
+        bacon.push({ x: wx, z: wz, y: padHeight, rot: rng() * Math.PI * 2, key: ix + "_" + iz + "_b" + i });
+        break;
+      }
+    }
+  }
+
+  return { cx, cz, width, depth, padHeight, footRadius, padRadius, walls, bacon, key: ix + "_" + iz };
 }
 
 function getNearbyBuildings(px, pz) {
@@ -271,30 +303,10 @@ function getNearbyBuildings(px, pz) {
   for (let dz = -BUILDING_RANGE; dz <= BUILDING_RANGE; dz++) {
     for (let dx = -BUILDING_RANGE; dx <= BUILDING_RANGE; dx++) {
       const b = buildBuilding(cix + dx, ciz + dz);
-      if (!b) continue;
-      if (giantBuilding && Math.hypot(b.cx - giantBuilding.cx, b.cz - giantBuilding.cz) < giantBuilding.padRadius + b.padRadius) continue;
-      if (Math.hypot(b.cx - px, b.cz - pz) < MAX_DIST + b.padRadius) list.push(b);
+      if (b && Math.hypot(b.cx - px, b.cz - pz) < MAX_DIST + b.padRadius) list.push(b);
     }
   }
   return list;
-}
-
-function refreshNearbyBuildings() {
-  currentBuildings = getNearbyBuildings(player.x, player.z);
-  if (giantBuilding && Math.hypot(giantBuilding.cx - player.x, giantBuilding.cz - player.z) < MAX_DIST + giantBuilding.padRadius) {
-    currentBuildings.push(giantBuilding);
-  }
-}
-
-function maybeSpawnGiant() {
-  if (giantSpawned || distanceWalked < GIANT_MILESTONE) return;
-  giantSpawned = true;
-  const fx = Math.sin(player.heading), fz = Math.cos(player.heading);
-  const aheadDist = 150 + hash2(1, 1, SEED + 424242) * 40;
-  const gx = player.x + fx * aheadDist;
-  const gz = player.z + fz * aheadDist;
-  giantBuilding = buildBuilding(0, 0, { giant: true, cx: gx, cz: gz });
-  showToast("Something massive looms on the horizon...");
 }
 
 function getNearbyTrees(px, pz) {
@@ -342,16 +354,140 @@ function treeSegments(t) {
   return segs;
 }
 
-function sphereSegments(cx, cy, cz, R) {
+function baconSegments(item) {
+  const half = 0.32;
+  const y = item.y + 0.05;
+  const cosR = Math.cos(item.rot), sinR = Math.sin(item.rot);
+  const rot = (lx, lz) => ({
+    x: item.x + lx * cosR - lz * sinR,
+    y,
+    z: item.z + lx * sinR + lz * cosR,
+  });
+  const M = 4;
+  const topPts = [], botPts = [];
+  for (let i = 0; i <= M; i++) {
+    const t = i / M;
+    const lx = (t - 0.5) * 2 * half;
+    const wave = Math.sin(t * Math.PI * 2.4) * 0.07;
+    topPts.push(rot(lx, 0.13 + wave));
+    botPts.push(rot(lx, -0.13 + wave));
+  }
+  const segs = [];
+  for (let i = 0; i < M; i++) {
+    segs.push([topPts[i], topPts[i + 1]]);
+    segs.push([botPts[i], botPts[i + 1]]);
+  }
+  segs.push([topPts[0], botPts[0]]);
+  segs.push([topPts[M], botPts[M]]);
+  return segs;
+}
+
+function getNearbyPantsBase(px, pz) {
+  const list = [];
+  const cix = Math.floor(px / PANTS_CELL), ciz = Math.floor(pz / PANTS_CELL);
+  for (let dz = -PANTS_RANGE; dz <= PANTS_RANGE; dz++) {
+    for (let dx = -PANTS_RANGE; dx <= PANTS_RANGE; dx++) {
+      const ix = cix + dx, iz = ciz + dz;
+      const r = hash2(ix, iz, SEED + 662211);
+      if (r >= PANTS_DENSITY) continue;
+      const jx = hash2(ix, iz, SEED + 662222);
+      const jz = hash2(ix, iz, SEED + 662233);
+      const bx = (ix + 0.5 + (jx - 0.5) * 0.7) * PANTS_CELL;
+      const bz = (iz + 0.5 + (jz - 0.5) * 0.7) * PANTS_CELL;
+      if (Math.hypot(bx - px, bz - pz) > MAX_DIST + PANTS_CELL) continue;
+      list.push({ key: ix + "_" + iz, baseX: bx, baseZ: bz });
+    }
+  }
+  return list;
+}
+
+const pantsState = new Map();
+
+function getNearbyPants(px, pz) {
+  const bases = getNearbyPantsBase(px, pz);
+  const activeKeys = new Set();
+  const result = [];
+  for (const base of bases) {
+    activeKeys.add(base.key);
+    let st = pantsState.get(base.key);
+    if (!st) {
+      st = { x: base.baseX, z: base.baseZ, fleeing: false, fleeHeading: 0, legPhase: 0 };
+      pantsState.set(base.key, st);
+    }
+    result.push({
+      key: base.key,
+      x: st.x,
+      z: st.z,
+      y: terrainHeight(st.x, st.z),
+      heading: st.fleeHeading,
+      legPhase: st.legPhase,
+      fleeing: st.fleeing,
+    });
+  }
+  for (const k of Array.from(pantsState.keys())) {
+    if (!activeKeys.has(k)) pantsState.delete(k);
+  }
+  return result;
+}
+
+function updatePants(dt) {
+  for (const st of pantsState.values()) {
+    const dist = Math.hypot(st.x - player.x, st.z - player.z);
+    if (dist < PANTS_NOTICE_RADIUS) {
+      st.fleeing = true;
+      st.fleeHeading = Math.atan2(st.x - player.x, st.z - player.z);
+    } else if (dist > PANTS_CALM_RADIUS) {
+      st.fleeing = false;
+    }
+    if (st.fleeing) {
+      const fx = Math.sin(st.fleeHeading), fz = Math.cos(st.fleeHeading);
+      st.x += fx * PANTS_FLEE_SPEED * dt;
+      st.z += fz * PANTS_FLEE_SPEED * dt;
+      st.legPhase += dt * 16;
+    }
+  }
+}
+
+function pantsSegments(p) {
+  const waistW = 0.42;
+  const legLen = 0.5;
+  const bounce = p.fleeing ? Math.abs(Math.sin(p.legPhase)) * 0.08 : 0;
+  const waistY = p.y + legLen + bounce;
+  const fx = Math.sin(p.heading), fz = Math.cos(p.heading);
+  const rx = Math.cos(p.heading), rz = -Math.sin(p.heading);
+  const swing = p.fleeing ? Math.sin(p.legPhase) * 0.22 : 0;
+  const pt = (right, fwd, y) => ({
+    x: p.x + rx * right + fx * fwd,
+    y,
+    z: p.z + rz * right + fz * fwd,
+  });
+  const waistL = pt(-waistW / 2, 0, waistY);
+  const waistR = pt(waistW / 2, 0, waistY);
+  const kneeL = pt(-waistW / 2, swing * 0.5, p.y + legLen * 0.45 + bounce);
+  const kneeR = pt(waistW / 2, -swing * 0.5, p.y + legLen * 0.45 + bounce);
+  const footL = pt(-waistW / 2, swing, p.y);
+  const footR = pt(waistW / 2, -swing, p.y);
+  return [
+    [waistL, waistR],
+    [waistL, kneeL], [kneeL, footL],
+    [waistR, kneeR], [kneeR, footR],
+  ];
+}
+
+function sphereSegments(cx, topY, cz, R, vScale, hScale) {
   const segs = [];
   const N = 8;
-  const ringDy = [-0.55, 0, 0.55].map((f) => f * R);
-  const rings = ringDy.map((dy) => {
-    const rr = Math.sqrt(Math.max(R * R - dy * dy, 0.0001));
+  const centerY = topY - R * vScale;
+  const ringFracs = [-0.55, 0, 0.55];
+  const rings = ringFracs.map((f) => {
+    const dyLocal = f * R;
+    const rrLocal = Math.sqrt(Math.max(R * R - dyLocal * dyLocal, 0.0001));
+    const y = centerY + dyLocal * vScale;
+    const rr = rrLocal * hScale;
     const pts = [];
     for (let i = 0; i < N; i++) {
       const a = (i / N) * Math.PI * 2;
-      pts.push({ x: cx + Math.cos(a) * rr, y: cy + dy, z: cz + Math.sin(a) * rr });
+      pts.push({ x: cx + Math.cos(a) * rr, y, z: cz + Math.sin(a) * rr });
     }
     return pts;
   });
@@ -361,13 +497,15 @@ function sphereSegments(cx, cy, cz, R) {
   for (let r = 0; r < rings.length - 1; r++) {
     for (let i = 0; i < N; i++) segs.push([rings[r][i], rings[r + 1][i]]);
   }
-  const top = { x: cx, y: cy + R, z: cz }, bottom = { x: cx, y: cy - R, z: cz };
+  const top = { x: cx, y: topY, z: cz };
+  const bottom = { x: cx, y: centerY - R * vScale, z: cz };
   for (let i = 0; i < N; i++) {
     segs.push([rings[rings.length - 1][i], top]);
     segs.push([rings[0][i], bottom]);
   }
-  segs.push([top, { x: cx, y: cy + R * 1.4, z: cz }]);
-  return { segs, eye: { x: cx, y: cy + R * 1.4, z: cz } };
+  const eye = { x: cx, y: topY + R * 0.4, z: cz };
+  segs.push([top, eye]);
+  return { segs, eye };
 }
 
 function project(x, y, z, cam) {
@@ -401,41 +539,40 @@ function toScreen(p) {
 let player = { x: 0, z: 0, heading: 0 };
 let distanceWalked = 0;
 let best = Number(localStorage.getItem(BEST_KEY) || 0);
-let treesFound = 0;
-const visitedTrees = new Set();
+let baconCollected = 0;
+const collectedBacon = new Set();
 let currentTrees = [];
+let currentBacon = [];
+let currentPants = [];
 let started = false;
-let bobPhase = 0;
-let giantBuilding = null;
-let giantSpawned = false;
+let squishPhase = 0;
 const keys = { forward: false, backward: false, left: false, right: false };
 
 bestEl.textContent = Math.floor(best);
 
-const toastEl = document.getElementById("toast");
-let toastTimer = null;
-function showToast(text, duration) {
-  toastEl.textContent = text;
-  toastEl.classList.add("show");
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toastEl.classList.remove("show"), duration || 4500);
-}
-
 function updateHud() {
   distanceEl.textContent = Math.floor(distanceWalked);
-  treesEl.textContent = treesFound;
+  baconEl.textContent = baconCollected;
   bestEl.textContent = Math.floor(best);
+}
+
+function refreshCurrentBacon() {
+  currentBacon = [];
+  for (const b of currentBuildings) {
+    for (const item of b.bacon) {
+      if (!collectedBacon.has(item.key)) currentBacon.push(item);
+    }
+  }
 }
 
 function resetWorld(newSeed) {
   SEED = newSeed;
   player = { x: 0, z: 0, heading: 0 };
   distanceWalked = 0;
-  treesFound = 0;
-  visitedTrees.clear();
-  bobPhase = 0;
-  giantBuilding = null;
-  giantSpawned = false;
+  baconCollected = 0;
+  collectedBacon.clear();
+  pantsState.clear();
+  squishPhase = 0;
   updateHud();
 }
 
@@ -464,8 +601,11 @@ function update(dt) {
   if (keys.forward) moveAmt += MOVE_SPEED * dt;
   if (keys.backward) moveAmt -= MOVE_SPEED_BACK * dt;
 
-  refreshNearbyBuildings();
+  currentBuildings = getNearbyBuildings(player.x, player.z);
   currentTrees = getNearbyTrees(player.x, player.z);
+  refreshCurrentBacon();
+  updatePants(dt);
+  currentPants = getNearbyPants(player.x, player.z);
 
   if (moveAmt !== 0) {
     let nx = player.x + fx * moveAmt;
@@ -489,22 +629,21 @@ function update(dt) {
     player.x = nx;
     player.z = nz;
     distanceWalked += Math.abs(moveAmt);
-    bobPhase += Math.abs(moveAmt) * 1.6;
+    squishPhase += Math.abs(moveAmt) * 1.6;
     if (distanceWalked > best) {
       best = distanceWalked;
       localStorage.setItem(BEST_KEY, String(Math.floor(best)));
     }
   }
 
-  for (const t of currentTrees) {
-    if (visitedTrees.has(t.key)) continue;
-    if (Math.hypot(t.x - player.x, t.z - player.z) < DISCOVER_RADIUS) {
-      visitedTrees.add(t.key);
-      treesFound++;
+  for (const item of currentBacon) {
+    if (Math.hypot(item.x - player.x, item.z - player.z) < BACON_RADIUS) {
+      collectedBacon.add(item.key);
+      baconCollected++;
     }
   }
+  currentBacon = currentBacon.filter((item) => !collectedBacon.has(item.key));
 
-  maybeSpawnGiant();
   updateHud();
 }
 
@@ -534,24 +673,24 @@ function drawSeg(a, b, group) {
   bandPaths[group][band].lineTo(pb.sx, pb.sy);
 }
 
-let bandPaths = { grid: [], tree: [] };
+let bandPaths = { grid: [], tree: [], bacon: [], pants: [] };
 
 function drawBuildings(cam) {
   const items = [];
   for (const b of currentBuildings) {
     for (const seg of b.walls) {
       const midx = (seg.ax + seg.bx) / 2, midz = (seg.az + seg.bz) / 2;
-      const c = project(midx, b.padHeight + b.wallHeight / 2, midz, cam);
+      const c = project(midx, b.padHeight + WALL_HEIGHT / 2, midz, cam);
       if (c.z < NEAR - 3 || c.z > MAX_DIST + 15) continue;
-      items.push({ dist: c.z, seg, padHeight: b.padHeight, wallHeight: b.wallHeight });
+      items.push({ dist: c.z, seg, padHeight: b.padHeight });
     }
   }
   items.sort((a, b) => b.dist - a.dist);
   for (const it of items) {
     const a = project(it.seg.ax, it.padHeight, it.seg.az, cam);
     const b = project(it.seg.bx, it.padHeight, it.seg.bz, cam);
-    const c = project(it.seg.bx, it.padHeight + it.wallHeight, it.seg.bz, cam);
-    const d = project(it.seg.ax, it.padHeight + it.wallHeight, it.seg.az, cam);
+    const c = project(it.seg.bx, it.padHeight + WALL_HEIGHT, it.seg.bz, cam);
+    const d = project(it.seg.ax, it.padHeight + WALL_HEIGHT, it.seg.az, cam);
     if (a.z <= NEAR || b.z <= NEAR || c.z <= NEAR || d.z <= NEAR) continue;
     const sa = toScreen(a), sb = toScreen(b), sc = toScreen(c), sd = toScreen(d);
     const t = Math.min(1, Math.max(0, it.dist / MAX_DIST));
@@ -587,10 +726,12 @@ function render() {
   ctx.fillStyle = skyGrad;
   ctx.fillRect(0, 0, W, horizonY);
 
-  bandPaths = { grid: [], tree: [] };
+  bandPaths = { grid: [], tree: [], bacon: [], pants: [] };
   for (let i = 0; i < BANDS; i++) {
     bandPaths.grid.push(new Path2D());
     bandPaths.tree.push(new Path2D());
+    bandPaths.bacon.push(new Path2D());
+    bandPaths.pants.push(new Path2D());
   }
 
   const N = GRID_N;
@@ -617,11 +758,32 @@ function render() {
     .map((t) => ({ t, cam: project(t.x, t.y, t.z, cam) }))
     .filter((e) => e.cam.z > NEAR - 3 && e.cam.z < MAX_DIST + 5)
     .sort((a, b) => b.cam.z - a.cam.z);
-
   for (const e of treesSorted) {
     const segs = treeSegments(e.t);
     for (const [a, b] of segs) {
       drawSeg(project(a.x, a.y, a.z, cam), project(b.x, b.y, b.z, cam), "tree");
+    }
+  }
+
+  const baconSorted = currentBacon
+    .map((it) => ({ it, cam: project(it.x, it.y, it.z, cam) }))
+    .filter((e) => e.cam.z > NEAR - 3 && e.cam.z < MAX_DIST + 5)
+    .sort((a, b) => b.cam.z - a.cam.z);
+  for (const e of baconSorted) {
+    const segs = baconSegments(e.it);
+    for (const [a, b] of segs) {
+      drawSeg(project(a.x, a.y, a.z, cam), project(b.x, b.y, b.z, cam), "bacon");
+    }
+  }
+
+  const pantsSorted = currentPants
+    .map((p) => ({ p, cam: project(p.x, p.y + 0.25, p.z, cam) }))
+    .filter((e) => e.cam.z > NEAR - 3 && e.cam.z < MAX_DIST + 5)
+    .sort((a, b) => b.cam.z - a.cam.z);
+  for (const e of pantsSorted) {
+    const segs = pantsSegments(e.p);
+    for (const [a, b] of segs) {
+      drawSeg(project(a.x, a.y, a.z, cam), project(b.x, b.y, b.z, cam), "pants");
     }
   }
 
@@ -634,15 +796,24 @@ function render() {
     ctx.shadowColor = treeBandColor[i];
     ctx.strokeStyle = treeBandColor[i];
     ctx.stroke(bandPaths.tree[i]);
+    ctx.shadowColor = baconBandColor[i];
+    ctx.strokeStyle = baconBandColor[i];
+    ctx.stroke(bandPaths.bacon[i]);
+    ctx.shadowColor = pantsBandColor[i];
+    ctx.strokeStyle = pantsBandColor[i];
+    ctx.stroke(bandPaths.pants[i]);
   }
   ctx.shadowBlur = 0;
 
   drawBuildings(cam);
 
-  const bob = Math.sin(bobPhase) * 0.09 + 0.09;
-  const py = terrainHeight(player.x, player.z);
   const R = 0.55;
-  const nub = sphereSegments(player.x, py + R + bob, player.z, R);
+  const py = terrainHeight(player.x, player.z);
+  const topY = py + 2 * R;
+  const squish = Math.sin(squishPhase) * SQUISH_AMOUNT;
+  const vScale = 1 + squish;
+  const hScale = 1 - squish;
+  const nub = sphereSegments(player.x, topY, player.z, R, vScale, hScale);
   ctx.strokeStyle = CHAR_COLOR;
   ctx.lineWidth = 1.5;
   ctx.shadowBlur = GLOW_BLUR + 1;
@@ -678,8 +849,10 @@ function loop(now) {
   if (started) {
     update(dt);
   } else {
-    refreshNearbyBuildings();
+    currentBuildings = getNearbyBuildings(player.x, player.z);
     currentTrees = getNearbyTrees(player.x, player.z);
+    refreshCurrentBacon();
+    currentPants = getNearbyPants(player.x, player.z);
   }
   render();
   requestAnimationFrame(loop);
