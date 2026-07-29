@@ -131,6 +131,15 @@ body {
   font-size: 2.5rem;
 }
 
+.wander-thumb {
+  background: linear-gradient(160deg, #16202b, #0d0f14 85%);
+}
+
+.wander-thumb::after {
+  content: "🥾";
+  font-size: 2.5rem;
+}
+
 .soon-thumb {
   background: #1b1f2a;
   color: var(--muted);

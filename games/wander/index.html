@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wander — Meatflap Arcade</title>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="wander.css">
+</head>
+<body>
+  <a class="back-link" href="../../">← Arcade</a>
+
+  <div class="wander-wrap">
+    <h1>Wander</h1>
+    <div class="hud">
+      <span>Distance: <strong id="distance">0</strong>m</span>
+      <span>Trees found: <strong id="trees">0</strong></span>
+      <span>Best: <strong id="best">0</strong>m</span>
+      <button id="new-world-btn" class="mini-btn" type="button">🔀 New World</button>
+    </div>
+
+    <canvas id="board" width="840" height="480"></canvas>
+
+    <p class="hint">WASD / Arrow keys to walk — Up/Down move, Left/Right turn. Use the pad on mobile.</p>
+
+    <div class="dpad">
+      <button class="dpad-btn dpad-up" data-dir="forward" aria-label="Walk forward">▲</button>
+      <button class="dpad-btn dpad-left" data-dir="left" aria-label="Turn left">◀</button>
+      <button class="dpad-btn dpad-down" data-dir="backward" aria-label="Walk backward">▼</button>
+      <button class="dpad-btn dpad-right" data-dir="right" aria-label="Turn right">▶</button>
+    </div>
+
+    <div id="overlay" class="overlay">
+      <p id="overlay-text">Wander</p>
+      <p id="overlay-sub">An endless wireframe wilderness — rolling hills, valleys, and trees generated as you go. Just walk.</p>
+      <button id="start-btn">Start Walking</button>
+    </div>
+  </div>
+
+  <script src="wander.js"></script>
+</body>
+</html>
