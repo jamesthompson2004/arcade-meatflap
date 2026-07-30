@@ -62,18 +62,27 @@ const ROCK_DENSITY = 0.16;
 const ROCK_RADIUS = 0.6;
 const ROCK_NEAR = [150, 150, 165];
 
-const BIRD_FLOCK_MIN_INTERVAL = 20;
-const BIRD_FLOCK_MAX_INTERVAL = 45;
+const BIRD_FLOCK_CELL = 15;
+const BIRD_FLOCK_RANGE = Math.ceil(MAX_DIST / BIRD_FLOCK_CELL) + 1;
+const BIRD_FLOCK_DENSITY = 0.06;
 const BIRD_FLOCK_MIN_COUNT = 1;
 const BIRD_FLOCK_MAX_COUNT = 12;
-const BIRD_SPEED = 5;
-const BIRD_MAX_AGE = 14;
-const BIRD_ALTITUDE_MIN = 14;
-const BIRD_ALTITUDE_MAX = 24;
-const BIRD_SPAWN_DIST_MIN = 50;
-const BIRD_SPAWN_DIST_MAX = 90;
+const BIRD_NOTICE_RADIUS = 6;
+const BIRD_FLEE_SPEED = 11;
+const BIRD_FLEE_DURATION = 2.5;
+const BIRD_RAMP_DURATION = 0.25;
+const BIRD_TURN_SPEED = 12;
+const BIRD_TURN_RAMP_DURATION = 0.2;
+const BIRD_FLEE_ARC_DEG = 120;
+const BIRD_RISE_HEIGHT = 6;
+const BIRD_RISE_DURATION = 1.2;
+const BIRD_BUBBLE_DURATION = 1.6;
 const BIRD_WING_SPAN = 0.9;
 const BIRD_NEAR = [225, 228, 235];
+const BIRD_NOISES = [
+  "Squawk!", "Caw!", "Scatter!", "Flap flap flap!",
+  "Tweet tweet!", "Yikes, feathers!", "Shoo!", "Get away!",
+];
 
 const LEMUR_CELL = 17;
 const LEMUR_RANGE = Math.ceil(MAX_DIST / LEMUR_CELL) + 1;
@@ -805,70 +814,146 @@ function pantsSegments(p) {
   ];
 }
 
-let birdFlocks = [];
-let birdSpawnTimer = 8;
+const birdFlockState = new Map();
+const goneBirdFlocks = new Set();
 let currentBirds = [];
 
-function spawnBirdFlock() {
-  const count = BIRD_FLOCK_MIN_COUNT + Math.floor(Math.random() * (BIRD_FLOCK_MAX_COUNT - BIRD_FLOCK_MIN_COUNT + 1));
-  const heading = Math.random() * Math.PI * 2;
-  const spawnAngle = Math.random() * Math.PI * 2;
-  const dist = BIRD_SPAWN_DIST_MIN + Math.random() * (BIRD_SPAWN_DIST_MAX - BIRD_SPAWN_DIST_MIN);
-  const originX = player.x + Math.sin(spawnAngle) * dist;
-  const originZ = player.z + Math.cos(spawnAngle) * dist;
-  const altitude = terrainHeight(originX, originZ) + BIRD_ALTITUDE_MIN + Math.random() * (BIRD_ALTITUDE_MAX - BIRD_ALTITUDE_MIN);
-  const birds = [];
-  for (let i = 0; i < count; i++) {
-    birds.push({
-      offX: (Math.random() - 0.5) * 8,
-      offZ: (Math.random() - 0.5) * 8,
-      offY: (Math.random() - 0.5) * 3,
-      flapPhase: Math.random() * Math.PI * 2,
-      flapRate: Math.random() * 2,
-    });
+function getNearbyBirdFlocksBase(px, pz) {
+  const list = [];
+  const cix = Math.floor(px / BIRD_FLOCK_CELL), ciz = Math.floor(pz / BIRD_FLOCK_CELL);
+  for (let dz = -BIRD_FLOCK_RANGE; dz <= BIRD_FLOCK_RANGE; dz++) {
+    for (let dx = -BIRD_FLOCK_RANGE; dx <= BIRD_FLOCK_RANGE; dx++) {
+      const ix = cix + dx, iz = ciz + dz;
+      const key = ix + "_" + iz;
+      if (goneBirdFlocks.has(key)) continue;
+      const r = hash2(ix, iz, SEED + 991122);
+      if (r >= BIRD_FLOCK_DENSITY) continue;
+      const jx = hash2(ix, iz, SEED + 991133);
+      const jz = hash2(ix, iz, SEED + 991144);
+      const bx = (ix + 0.5 + (jx - 0.5) * 0.7) * BIRD_FLOCK_CELL;
+      const bz = (iz + 0.5 + (jz - 0.5) * 0.7) * BIRD_FLOCK_CELL;
+      if (Math.hypot(bx - px, bz - pz) > MAX_DIST + BIRD_FLOCK_CELL) continue;
+      const count = BIRD_FLOCK_MIN_COUNT + Math.floor(hash2(ix, iz, SEED + 991155) * (BIRD_FLOCK_MAX_COUNT - BIRD_FLOCK_MIN_COUNT + 1));
+      const birds = [];
+      for (let i = 0; i < count; i++) {
+        birds.push({
+          offX: (hash2(ix, iz, SEED + 991200 + i * 3) - 0.5) * 3,
+          offZ: (hash2(ix, iz, SEED + 991201 + i * 3) - 0.5) * 3,
+          idlePhase: hash2(ix, iz, SEED + 991202 + i * 3) * Math.PI * 2,
+        });
+      }
+      list.push({ key, baseX: bx, baseZ: bz, birds });
+    }
   }
-  birdFlocks.push({
-    x: originX, z: originZ, y: altitude,
-    fx: Math.sin(heading), fz: Math.cos(heading),
-    speed: BIRD_SPEED * (0.8 + Math.random() * 0.4),
-    age: 0, maxAge: BIRD_MAX_AGE,
-    birds,
-  });
+  return list;
 }
 
-function updateBirds(dt) {
-  birdSpawnTimer -= dt;
-  if (birdSpawnTimer <= 0) {
-    spawnBirdFlock();
-    birdSpawnTimer = BIRD_FLOCK_MIN_INTERVAL + Math.random() * (BIRD_FLOCK_MAX_INTERVAL - BIRD_FLOCK_MIN_INTERVAL);
+function refreshBirdFlocks(px, pz) {
+  const bases = getNearbyBirdFlocksBase(px, pz);
+  const activeKeys = new Set();
+  for (const base of bases) {
+    activeKeys.add(base.key);
+    if (!birdFlockState.has(base.key)) {
+      birdFlockState.set(base.key, {
+        x: base.baseX, z: base.baseZ,
+        flying: false, facing: 0, fleeHeading: 0, fleeTimer: 0,
+        bubbleTimer: 0, bubbleText: "",
+        birds: base.birds.map((b) => ({ ...b, flapPhase: Math.random() * Math.PI * 2 })),
+      });
+    }
   }
-  for (const flock of birdFlocks) {
-    flock.age += dt;
-    flock.x += flock.fx * flock.speed * dt;
-    flock.z += flock.fz * flock.speed * dt;
-    for (const b of flock.birds) b.flapPhase += dt * (5 + b.flapRate);
+  for (const k of Array.from(birdFlockState.keys())) {
+    if (!activeKeys.has(k)) birdFlockState.delete(k);
   }
-  birdFlocks = birdFlocks.filter((f) => f.age < f.maxAge);
+}
+
+function updateBirdFlocks(dt) {
+  for (const [key, st] of birdFlockState.entries()) {
+    if (!st.flying) {
+      const dist = Math.hypot(st.x - player.x, st.z - player.z);
+      if (dist < BIRD_NOTICE_RADIUS) {
+        st.flying = true;
+        const awayHeading = Math.atan2(st.x - player.x, st.z - player.z);
+        const arcSpread = (Math.random() - 0.5) * (BIRD_FLEE_ARC_DEG * Math.PI / 180);
+        st.fleeHeading = awayHeading + arcSpread;
+        st.fleeTimer = BIRD_FLEE_DURATION;
+        st.bubbleTimer = BIRD_BUBBLE_DURATION;
+        st.bubbleText = BIRD_NOISES[Math.floor(Math.random() * BIRD_NOISES.length)];
+      } else {
+        for (const b of st.birds) b.idlePhase += dt * 2;
+      }
+    }
+    if (st.flying) {
+      const elapsed = BIRD_FLEE_DURATION - st.fleeTimer;
+      const rampT = Math.min(1, elapsed / BIRD_RAMP_DURATION);
+      const turnRampT = Math.min(1, elapsed / BIRD_TURN_RAMP_DURATION);
+      const turnStep = BIRD_TURN_SPEED * turnRampT * dt;
+      const diff = angleDiff(st.fleeHeading, st.facing);
+      if (Math.abs(diff) <= turnStep) st.facing = st.fleeHeading;
+      else st.facing += Math.sign(diff) * turnStep;
+      const speed = BIRD_FLEE_SPEED * rampT;
+      const fx = Math.sin(st.facing), fz = Math.cos(st.facing);
+      st.x += fx * speed * dt;
+      st.z += fz * speed * dt;
+      for (const b of st.birds) b.flapPhase += dt * 14;
+      st.fleeTimer -= dt;
+      if (st.bubbleTimer > 0) st.bubbleTimer -= dt;
+      if (st.fleeTimer <= 0) {
+        goneBirdFlocks.add(key);
+        birdFlockState.delete(key);
+      }
+    }
+  }
+
+  rebuildCurrentBirds();
+}
+
+function rebuildCurrentBirds() {
   currentBirds = [];
-  for (const flock of birdFlocks) {
-    for (const b of flock.birds) {
+  for (const st of birdFlockState.values()) {
+    const climb = st.flying ? Math.min(1, (BIRD_FLEE_DURATION - st.fleeTimer) / BIRD_RISE_DURATION) * BIRD_RISE_HEIGHT : 0;
+    for (const b of st.birds) {
+      const bx = st.x + b.offX, bz = st.z + b.offZ;
       currentBirds.push({
-        x: flock.x + b.offX,
-        y: flock.y + b.offY,
-        z: flock.z + b.offZ,
+        x: bx,
+        y: terrainHeight(bx, bz) + climb,
+        z: bz,
         flapPhase: b.flapPhase,
+        idlePhase: b.idlePhase,
+        heading: st.facing,
+        flying: st.flying,
       });
     }
   }
 }
 
 function birdSegments(bird) {
-  const flap = Math.sin(bird.flapPhase) * 0.4 + 0.15;
-  const span = BIRD_WING_SPAN;
-  const center = { x: bird.x, y: bird.y, z: bird.z };
-  const left = { x: bird.x - span, y: bird.y + flap, z: bird.z };
-  const right = { x: bird.x + span, y: bird.y + flap, z: bird.z };
-  return [[left, center], [center, right]];
+  if (bird.flying) {
+    const flap = Math.sin(bird.flapPhase) * 0.4 + 0.15;
+    const span = BIRD_WING_SPAN;
+    const center = { x: bird.x, y: bird.y, z: bird.z };
+    const left = { x: bird.x - span, y: bird.y + flap, z: bird.z };
+    const right = { x: bird.x + span, y: bird.y + flap, z: bird.z };
+    return [[left, center], [center, right]];
+  }
+  const bob = Math.abs(Math.sin(bird.idlePhase)) * 0.04;
+  const bodyY = bird.y + 0.1 + bob;
+  const fx = Math.sin(bird.heading), fz = Math.cos(bird.heading);
+  const rx = Math.cos(bird.heading), rz = -Math.sin(bird.heading);
+  const pt = (right, fwd, up) => ({
+    x: bird.x + rx * right + fx * fwd,
+    y: up,
+    z: bird.z + rz * right + fz * fwd,
+  });
+  const beak = pt(0, 0.18, bodyY + 0.05);
+  const tail = pt(0, -0.16, bodyY + 0.08);
+  const left = pt(-0.13, 0, bodyY);
+  const right = pt(0.13, 0, bodyY);
+  const top = pt(0, 0, bodyY + 0.12);
+  return [
+    [beak, left], [left, tail], [tail, right], [right, beak],
+    [left, top], [right, top],
+  ];
 }
 
 const lemurState = new Map();
@@ -1143,8 +1228,8 @@ function resetWorld(newSeed) {
   goneKeys.clear();
   baconPopups = [];
   lemurState.clear();
-  birdFlocks = [];
-  birdSpawnTimer = 8;
+  birdFlockState.clear();
+  goneBirdFlocks.clear();
   currentBirds = [];
   treeWobbles.clear();
   skyTime = 0;
@@ -1195,7 +1280,8 @@ function update(dt) {
   currentPants = getNearbyPants(player.x, player.z);
   updateLemurs(dt);
   currentLemurs = getNearbyLemurs(player.x, player.z);
-  updateBirds(dt);
+  refreshBirdFlocks(player.x, player.z);
+  updateBirdFlocks(dt);
   if (scares > 0) {
     pantsScared += scares;
     if (pantsScared > bestPantsScared) {
@@ -1460,6 +1546,50 @@ function drawPantsBubbles(cam) {
   }
 }
 
+function drawSpeechBubble(sx, sy, text, alpha) {
+  ctx.font = "13px system-ui, sans-serif";
+  const padX = 9, padY = 6;
+  const metrics = ctx.measureText(text);
+  const w = metrics.width + padX * 2;
+  const h = 14 + padY * 2;
+  const bx = sx - w / 2, by = sy - h - 16;
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = "rgba(255,255,255,0.94)";
+  ctx.strokeStyle = "rgba(20,20,30,0.85)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(bx, by, w, h, 8);
+  else ctx.rect(bx, by, w, h);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(sx - 6, by + h - 1);
+  ctx.lineTo(sx + 2, by + h + 12);
+  ctx.lineTo(sx + 9, by + h - 1);
+  ctx.closePath();
+  ctx.fillStyle = "rgba(255,255,255,0.94)";
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "rgba(20,20,30,0.92)";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, sx, by + h / 2 + 1);
+  ctx.globalAlpha = 1;
+}
+
+function drawBirdBubbles(cam) {
+  for (const st of birdFlockState.values()) {
+    if (!st.bubbleTimer || st.bubbleTimer <= 0) continue;
+    const groundY = terrainHeight(st.x, st.z);
+    const headY = groundY + (st.flying ? BIRD_RISE_HEIGHT * 0.6 : 0.4);
+    const proj = project(st.x, headY, st.z, cam);
+    if (proj.z <= NEAR) continue;
+    const screen = toScreen(proj);
+    const alpha = Math.min(1, st.bubbleTimer / 0.35);
+    drawSpeechBubble(screen.sx, screen.sy, st.bubbleText, alpha);
+  }
+}
+
 function drawBaconPopups(cam) {
   for (const p of baconPopups) {
     const t = p.age / BACON_POPUP_DURATION;
@@ -1563,6 +1693,7 @@ function render() {
   }
 
   drawPantsBubbles(cam);
+  drawBirdBubbles(cam);
   drawBaconPopups(cam);
 }
 
@@ -1582,6 +1713,8 @@ function loop(now) {
     refreshCurrentBacon();
     currentPants = getNearbyPants(player.x, player.z);
     currentLemurs = getNearbyLemurs(player.x, player.z);
+    refreshBirdFlocks(player.x, player.z);
+    rebuildCurrentBirds();
   }
   render();
   requestAnimationFrame(loop);
