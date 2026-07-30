@@ -824,8 +824,7 @@ function update(dt) {
   }
 
   for (const item of currentBacon) {
-    const touchRadius = BACON_TOUCH_RADIUS * (item.scale || 1);
-    if (Math.hypot(item.x - player.x, item.z - player.z) < touchRadius) {
+    if (Math.hypot(item.x - player.x, item.z - player.z) < BACON_TOUCH_RADIUS) {
       collectedBacon.add(item.key);
       const points = item.scale || 1;
       baconCollected += points;
