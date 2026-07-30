@@ -250,6 +250,34 @@ for (let i = 0; i < BANDS; i++) {
   gridBandColor.push(bandRgba(GRID_NEAR, t, alpha));
 }
 
+// Scene objects are drawn hundreds-strong in a dense area. Stroking each one individually
+// (its own Path2D + its own shadowBlur-toggled draw call) is the dominant per-frame cost —
+// shadowBlur is expensive per canvas call, not per pixel. Bucketing distance into the same
+// BANDS used for the terrain grid lets every object of a given type+band share one Path2D
+// and one shadowed stroke() call instead of one per object.
+function computeBandColors(nearRGB) {
+  const arr = [];
+  for (let i = 0; i < BANDS; i++) {
+    const t = i / (BANDS - 1);
+    arr.push(bandRgba(nearRGB, t, 1 - t));
+  }
+  return arr;
+}
+const TREE_BAND_COLORS = computeBandColors(TREE_NEAR);
+const ROCK_BAND_COLORS = computeBandColors(ROCK_NEAR);
+const LEMUR_BAND_COLORS = computeBandColors(LEMUR_NEAR);
+const PANTS_BAND_COLORS = computeBandColors(PANTS_NEAR);
+const BACON_BAND_COLORS = computeBandColors(BACON_NEAR);
+const BIRD_BAND_COLORS = computeBandColors(BIRD_NEAR);
+const WALL_BAND_COLORS = computeBandColors(BUILDING_NEAR);
+
+function distBand(dist) {
+  let band = Math.floor((dist / MAX_DIST) * BANDS);
+  if (band >= BANDS) band = BANDS - 1;
+  if (band < 0) band = 0;
+  return band;
+}
+
 function itemColor(nearRGB, dist) {
   const t = Math.min(1, Math.max(0, dist / MAX_DIST));
   return bandRgba(nearRGB, t, 1 - t);
@@ -1415,11 +1443,27 @@ let staminaExhausted = false;
 let staminaBarOpacity = 0;
 const keys = { forward: false, backward: false, left: false, right: false, space: false, shift: false };
 
+// update() calls this every frame regardless of whether anything changed. Writing the same
+// textContent still costs a style/layout check, so track what's on screen and skip the DOM
+// write when nothing moved — cheap insurance against needless work 60 times a second.
+let hudShown = { bacon: null, pantsScared: null, bestBacon: null, bestPantsScared: null };
 function updateHud() {
-  baconEl.textContent = baconCollected;
-  pantsScaredEl.textContent = pantsScared;
-  bestBaconEl.textContent = bestBacon;
-  bestPantsEl.textContent = bestPantsScared;
+  if (hudShown.bacon !== baconCollected) {
+    baconEl.textContent = baconCollected;
+    hudShown.bacon = baconCollected;
+  }
+  if (hudShown.pantsScared !== pantsScared) {
+    pantsScaredEl.textContent = pantsScared;
+    hudShown.pantsScared = pantsScared;
+  }
+  if (hudShown.bestBacon !== bestBacon) {
+    bestBaconEl.textContent = bestBacon;
+    hudShown.bestBacon = bestBacon;
+  }
+  if (hudShown.bestPantsScared !== bestPantsScared) {
+    bestPantsEl.textContent = bestPantsScared;
+    hudShown.bestPantsScared = bestPantsScared;
+  }
 }
 updateHud();
 
@@ -1711,7 +1755,7 @@ function strokeWireItem(segs, cam, color, lineWidth, blur) {
   ctx.stroke(path);
 }
 
-function drawWallItem(it, cam) {
+function drawWallFillAndQueueEdge(it, cam, edgePath) {
   const a = project(it.seg.ax, it.padHeight, it.seg.az, cam);
   const b = project(it.seg.bx, it.padHeight, it.seg.bz, cam);
   const c = project(it.seg.bx, it.padHeight + WALL_HEIGHT, it.seg.bz, cam);
@@ -1721,82 +1765,133 @@ function drawWallItem(it, cam) {
   const screenPts = poly.map(toScreen);
   const t = Math.min(1, Math.max(0, it.dist / MAX_DIST));
   const fillA = lerp(0.55, 0, t);
-  const edgeA = lerp(1, 0, t);
   ctx.beginPath();
   ctx.moveTo(screenPts[0].sx, screenPts[0].sy);
   for (let i = 1; i < screenPts.length; i++) ctx.lineTo(screenPts[i].sx, screenPts[i].sy);
   ctx.closePath();
   ctx.fillStyle = `rgba(16,20,28,${fillA.toFixed(3)})`;
-  ctx.shadowBlur = 0;
   ctx.fill();
-  const edgeColor = `rgba(${BUILDING_NEAR[0]},${BUILDING_NEAR[1]},${BUILDING_NEAR[2]},${edgeA.toFixed(3)})`;
-  ctx.shadowBlur = GLOW_BLUR;
-  ctx.lineWidth = 1.3;
-  ctx.strokeStyle = edgeColor;
-  ctx.shadowColor = edgeColor;
-  ctx.stroke();
+
+  edgePath.moveTo(screenPts[0].sx, screenPts[0].sy);
+  for (let i = 1; i < screenPts.length; i++) edgePath.lineTo(screenPts[i].sx, screenPts[i].sy);
+  edgePath.closePath();
+}
+
+function addBatchedSegs(path, segs, cam) {
+  for (const [a, b] of segs) {
+    const pa = project(a.x, a.y, a.z, cam), pb = project(b.x, b.y, b.z, cam);
+    const clipped = clipNear(pa, pb);
+    if (!clipped) continue;
+    const [ca, cb] = clipped;
+    const sa = toScreen(ca), sb = toScreen(cb);
+    path.moveTo(sa.sx, sa.sy);
+    path.lineTo(sb.sx, sb.sy);
+  }
+}
+
+function makeBandPaths() {
+  return Array.from({ length: BANDS }, () => new Path2D());
 }
 
 function drawSceneObjects(cam) {
-  const items = [];
+  const treePaths = makeBandPaths();
+  const rockPaths = makeBandPaths();
+  const lemurPaths = makeBandPaths();
+  const pantsPaths = makeBandPaths();
+  const baconPaths = makeBandPaths();
+  const baconBossPaths = makeBandPaths();
+  const birdPaths = makeBandPaths();
+  const wallEdgePaths = makeBandPaths();
+
   for (const t of currentTrees) {
     const c = project(t.x, t.y, t.z, cam);
     if (c.z < NEAR - 3 || c.z > MAX_DIST + 5) continue;
-    items.push({ type: "tree", dist: c.z, obj: t });
-  }
-  for (const it of currentBacon) {
-    const c = project(it.x, it.y, it.z, cam);
-    if (c.z < NEAR - 3 || c.z > MAX_DIST + 5) continue;
-    items.push({ type: "bacon", dist: c.z, obj: it });
-  }
-  for (const p of currentPants) {
-    const c = project(p.x, p.y + 0.25, p.z, cam);
-    if (c.z < NEAR - 3 || c.z > MAX_DIST + 5) continue;
-    items.push({ type: "pants", dist: c.z, obj: p });
+    addBatchedSegs(treePaths[distBand(c.z)], treeSegments(t), cam);
   }
   for (const r of currentRocks) {
     const c = project(r.x, r.y, r.z, cam);
     if (c.z < NEAR - 3 || c.z > MAX_DIST + 5) continue;
-    items.push({ type: "rock", dist: c.z, obj: r });
+    addBatchedSegs(rockPaths[distBand(c.z)], rockSegments(r), cam);
   }
   for (const l of currentLemurs) {
     const c = project(l.x, l.y + 0.3, l.z, cam);
     if (c.z < NEAR - 3 || c.z > MAX_DIST + 5) continue;
-    items.push({ type: "lemur", dist: c.z, obj: l });
+    addBatchedSegs(lemurPaths[distBand(c.z)], lemurSegments(l), cam);
+  }
+  for (const p of currentPants) {
+    const c = project(p.x, p.y + 0.25, p.z, cam);
+    if (c.z < NEAR - 3 || c.z > MAX_DIST + 5) continue;
+    addBatchedSegs(pantsPaths[distBand(c.z)], pantsSegments(p), cam);
+  }
+  for (const it of currentBacon) {
+    const c = project(it.x, it.y, it.z, cam);
+    if (c.z < NEAR - 3 || c.z > MAX_DIST + 5) continue;
+    const target = it.boss ? baconBossPaths : baconPaths;
+    addBatchedSegs(target[distBand(c.z)], baconSegments(it), cam);
   }
   for (const bird of currentBirds) {
     const c = project(bird.x, bird.y, bird.z, cam);
     if (c.z < NEAR - 3 || c.z > MAX_DIST + 5) continue;
-    items.push({ type: "bird", dist: c.z, obj: bird });
+    addBatchedSegs(birdPaths[distBand(c.z)], birdSegments(bird), cam);
   }
+
+  const wallItems = [];
   for (const b of currentBuildings) {
     for (const seg of b.walls) {
       const midx = (seg.ax + seg.bx) / 2, midz = (seg.az + seg.bz) / 2;
       const c = project(midx, b.padHeight + WALL_HEIGHT / 2, midz, cam);
       if (c.z < NEAR - 3 || c.z > MAX_DIST + 15) continue;
-      items.push({ type: "wall", dist: c.z, seg, padHeight: b.padHeight });
+      wallItems.push({ seg, padHeight: b.padHeight, dist: c.z });
     }
   }
-  items.sort((a, b) => b.dist - a.dist);
+  wallItems.sort((a, b) => b.dist - a.dist);
+  ctx.shadowBlur = 0;
+  for (const it of wallItems) {
+    drawWallFillAndQueueEdge(it, cam, wallEdgePaths[distBand(it.dist)]);
+  }
 
-  for (const it of items) {
-    if (it.type === "tree") {
-      strokeWireItem(treeSegments(it.obj), cam, itemColor(TREE_NEAR, it.dist), 1, GLOW_BLUR);
-    } else if (it.type === "bacon") {
-      const w = it.obj.boss ? 2.4 : 1.4;
-      const blur = it.obj.boss ? BACON_GLOW_BLUR * 1.6 : BACON_GLOW_BLUR;
-      strokeWireItem(baconSegments(it.obj), cam, itemColor(BACON_NEAR, it.dist), w, blur);
-    } else if (it.type === "pants") {
-      strokeWireItem(pantsSegments(it.obj), cam, itemColor(PANTS_NEAR, it.dist), 1.8, GLOW_BLUR);
-    } else if (it.type === "rock") {
-      strokeWireItem(rockSegments(it.obj), cam, itemColor(ROCK_NEAR, it.dist), 1, GLOW_BLUR);
-    } else if (it.type === "lemur") {
-      strokeWireItem(lemurSegments(it.obj), cam, itemColor(LEMUR_NEAR, it.dist), 1.4, GLOW_BLUR);
-    } else if (it.type === "bird") {
-      strokeWireItem(birdSegments(it.obj), cam, itemColor(BIRD_NEAR, it.dist), 1.2, GLOW_BLUR);
-    } else {
-      drawWallItem(it, cam);
-    }
+  ctx.lineWidth = 1;
+  ctx.shadowBlur = GLOW_BLUR;
+  for (let i = 0; i < BANDS; i++) {
+    ctx.strokeStyle = ctx.shadowColor = TREE_BAND_COLORS[i];
+    ctx.stroke(treePaths[i]);
+  }
+  for (let i = 0; i < BANDS; i++) {
+    ctx.strokeStyle = ctx.shadowColor = ROCK_BAND_COLORS[i];
+    ctx.stroke(rockPaths[i]);
+  }
+  ctx.lineWidth = 1.4;
+  for (let i = 0; i < BANDS; i++) {
+    ctx.strokeStyle = ctx.shadowColor = LEMUR_BAND_COLORS[i];
+    ctx.stroke(lemurPaths[i]);
+  }
+  ctx.lineWidth = 1.8;
+  for (let i = 0; i < BANDS; i++) {
+    ctx.strokeStyle = ctx.shadowColor = PANTS_BAND_COLORS[i];
+    ctx.stroke(pantsPaths[i]);
+  }
+  ctx.lineWidth = 1.4;
+  ctx.shadowBlur = BACON_GLOW_BLUR;
+  for (let i = 0; i < BANDS; i++) {
+    ctx.strokeStyle = ctx.shadowColor = BACON_BAND_COLORS[i];
+    ctx.stroke(baconPaths[i]);
+  }
+  ctx.lineWidth = 2.4;
+  ctx.shadowBlur = BACON_GLOW_BLUR * 1.6;
+  for (let i = 0; i < BANDS; i++) {
+    ctx.strokeStyle = ctx.shadowColor = BACON_BAND_COLORS[i];
+    ctx.stroke(baconBossPaths[i]);
+  }
+  ctx.lineWidth = 1.2;
+  ctx.shadowBlur = GLOW_BLUR;
+  for (let i = 0; i < BANDS; i++) {
+    ctx.strokeStyle = ctx.shadowColor = BIRD_BAND_COLORS[i];
+    ctx.stroke(birdPaths[i]);
+  }
+  ctx.lineWidth = 1.3;
+  for (let i = 0; i < BANDS; i++) {
+    ctx.strokeStyle = ctx.shadowColor = WALL_BAND_COLORS[i];
+    ctx.stroke(wallEdgePaths[i]);
   }
   ctx.shadowBlur = 0;
 }
