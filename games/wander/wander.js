@@ -50,6 +50,40 @@ const TREE_CELL = 9;
 const TREE_RANGE = Math.ceil(MAX_DIST / TREE_CELL) + 1;
 const TREE_DENSITY = 0.16;
 const TREE_RADIUS = 0.55;
+
+const ROCK_CELL = 9;
+const ROCK_RANGE = Math.ceil(MAX_DIST / ROCK_CELL) + 1;
+const ROCK_DENSITY = 0.16;
+const ROCK_RADIUS = 0.6;
+const ROCK_NEAR = [150, 150, 165];
+
+const BIRD_FLOCK_MIN_INTERVAL = 20;
+const BIRD_FLOCK_MAX_INTERVAL = 45;
+const BIRD_FLOCK_MIN_COUNT = 1;
+const BIRD_FLOCK_MAX_COUNT = 12;
+const BIRD_SPEED = 5;
+const BIRD_MAX_AGE = 14;
+const BIRD_ALTITUDE_MIN = 14;
+const BIRD_ALTITUDE_MAX = 24;
+const BIRD_SPAWN_DIST_MIN = 50;
+const BIRD_SPAWN_DIST_MAX = 90;
+const BIRD_WING_SPAN = 0.9;
+const BIRD_NEAR = [225, 228, 235];
+
+const LEMUR_CELL = 17;
+const LEMUR_RANGE = Math.ceil(MAX_DIST / LEMUR_CELL) + 1;
+const LEMUR_DENSITY = 0.05;
+const LEMUR_RADIUS = 0.45;
+const LEMUR_SPEED = 3;
+const LEMUR_WALK_MIN = 1.5;
+const LEMUR_WALK_MAX = 4;
+const LEMUR_PAUSE_MIN = 0.6;
+const LEMUR_PAUSE_MAX = 1.8;
+const LEMUR_BODY_LEN = 0.7;
+const LEMUR_BODY_HEIGHT = 0.35;
+const LEMUR_BODY_WIDTH = 0.3;
+const LEMUR_TAIL_LEN = 0.9;
+const LEMUR_NEAR = [225, 175, 110];
 const BACON_TOUCH_RADIUS = 1.0;
 const BACON_HEIGHT = 1.2;
 const BACON_POPUP_DURATION = 1.1;
@@ -417,6 +451,63 @@ function treeSegments(t) {
   return segs;
 }
 
+function getNearbyRocks(px, pz) {
+  const rocks = [];
+  const cix = Math.floor(px / ROCK_CELL), ciz = Math.floor(pz / ROCK_CELL);
+  for (let dz = -ROCK_RANGE; dz <= ROCK_RANGE; dz++) {
+    for (let dx = -ROCK_RANGE; dx <= ROCK_RANGE; dx++) {
+      const ix = cix + dx, iz = ciz + dz;
+      const r = hash2(ix, iz, SEED + 883311);
+      if (r >= ROCK_DENSITY) continue;
+      const jx = hash2(ix, iz, SEED + 883322);
+      const jz = hash2(ix, iz, SEED + 883333);
+      const rx = (ix + 0.5 + (jx - 0.5) * 0.7) * ROCK_CELL;
+      const rz = (iz + 0.5 + (jz - 0.5) * 0.7) * ROCK_CELL;
+      if (Math.hypot(rx - px, rz - pz) > MAX_DIST + ROCK_CELL) continue;
+      if (currentBuildings.some((b) => Math.hypot(rx - b.cx, rz - b.cz) < b.footRadius + 3)) continue;
+      const scale = 0.7 + hash2(ix, iz, SEED + 883344) * 0.8;
+      const rot = hash2(ix, iz, SEED + 883355) * Math.PI * 2;
+      const jitterBase = [], jitterTop = [];
+      for (let i = 0; i < 6; i++) {
+        jitterBase.push(0.7 + hash2(ix, iz, SEED + 883400 + i) * 0.6);
+        jitterTop.push(0.5 + hash2(ix, iz, SEED + 883500 + i) * 0.6);
+      }
+      rocks.push({ x: rx, z: rz, y: terrainHeight(rx, rz), scale, rot, jitterBase, jitterTop, key: ix + "_" + iz });
+    }
+  }
+  return rocks;
+}
+
+function rockSegments(rock) {
+  const N = 6;
+  const baseR = 0.55 * rock.scale;
+  const topR = 0.35 * rock.scale;
+  const height = 0.5 * rock.scale;
+  const cosR = Math.cos(rock.rot), sinR = Math.sin(rock.rot);
+  const place = (lx, lz, ly) => ({
+    x: rock.x + lx * cosR - lz * sinR,
+    y: rock.y + ly,
+    z: rock.z + lx * sinR + lz * cosR,
+  });
+  const basePts = [], topPts = [];
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2;
+    const br = baseR * rock.jitterBase[i];
+    const tr = topR * rock.jitterTop[i];
+    basePts.push(place(Math.cos(a) * br, Math.sin(a) * br, 0));
+    topPts.push(place(Math.cos(a) * tr, Math.sin(a) * tr, height * (0.6 + rock.jitterTop[i] * 0.5)));
+  }
+  const segs = [];
+  for (let i = 0; i < N; i++) {
+    segs.push([basePts[i], basePts[(i + 1) % N]]);
+    segs.push([topPts[i], topPts[(i + 1) % N]]);
+    segs.push([basePts[i], topPts[i]]);
+  }
+  segs.push([basePts[0], topPts[3]]);
+  segs.push([basePts[2], topPts[5]]);
+  return segs;
+}
+
 function baconSegments(item) {
   const scale = item.scale || 1;
   const height = BACON_HEIGHT * scale;
@@ -548,6 +639,16 @@ function updatePants(dt) {
           nz += (dz / treeDist) * push;
         }
       }
+      for (const r of currentRocks) {
+        const dx = nx - r.x, dz = nz - r.z;
+        const rockDist = Math.hypot(dx, dz);
+        const minDist = PANTS_RADIUS + ROCK_RADIUS * r.scale;
+        if (rockDist > 0.0001 && rockDist < minDist) {
+          const push = minDist - rockDist;
+          nx += (dx / rockDist) * push;
+          nz += (dz / rockDist) * push;
+        }
+      }
       for (const b of currentBuildings) {
         if (Math.hypot(nx - b.cx, nz - b.cz) > b.footRadius + 4) continue;
         for (const seg of b.walls) {
@@ -612,6 +713,210 @@ function pantsSegments(p) {
     [legTopLf, ankleLf], [legTopLb, ankleLb], [ankleLf, ankleLb],
     [legTopRf, legTopRb],
     [legTopRf, ankleRf], [legTopRb, ankleRb], [ankleRf, ankleRb],
+  ];
+}
+
+let birdFlocks = [];
+let birdSpawnTimer = 8;
+let currentBirds = [];
+
+function spawnBirdFlock() {
+  const count = BIRD_FLOCK_MIN_COUNT + Math.floor(Math.random() * (BIRD_FLOCK_MAX_COUNT - BIRD_FLOCK_MIN_COUNT + 1));
+  const heading = Math.random() * Math.PI * 2;
+  const spawnAngle = Math.random() * Math.PI * 2;
+  const dist = BIRD_SPAWN_DIST_MIN + Math.random() * (BIRD_SPAWN_DIST_MAX - BIRD_SPAWN_DIST_MIN);
+  const originX = player.x + Math.sin(spawnAngle) * dist;
+  const originZ = player.z + Math.cos(spawnAngle) * dist;
+  const altitude = terrainHeight(originX, originZ) + BIRD_ALTITUDE_MIN + Math.random() * (BIRD_ALTITUDE_MAX - BIRD_ALTITUDE_MIN);
+  const birds = [];
+  for (let i = 0; i < count; i++) {
+    birds.push({
+      offX: (Math.random() - 0.5) * 8,
+      offZ: (Math.random() - 0.5) * 8,
+      offY: (Math.random() - 0.5) * 3,
+      flapPhase: Math.random() * Math.PI * 2,
+      flapRate: Math.random() * 2,
+    });
+  }
+  birdFlocks.push({
+    x: originX, z: originZ, y: altitude,
+    fx: Math.sin(heading), fz: Math.cos(heading),
+    speed: BIRD_SPEED * (0.8 + Math.random() * 0.4),
+    age: 0, maxAge: BIRD_MAX_AGE,
+    birds,
+  });
+}
+
+function updateBirds(dt) {
+  birdSpawnTimer -= dt;
+  if (birdSpawnTimer <= 0) {
+    spawnBirdFlock();
+    birdSpawnTimer = BIRD_FLOCK_MIN_INTERVAL + Math.random() * (BIRD_FLOCK_MAX_INTERVAL - BIRD_FLOCK_MIN_INTERVAL);
+  }
+  for (const flock of birdFlocks) {
+    flock.age += dt;
+    flock.x += flock.fx * flock.speed * dt;
+    flock.z += flock.fz * flock.speed * dt;
+    for (const b of flock.birds) b.flapPhase += dt * (5 + b.flapRate);
+  }
+  birdFlocks = birdFlocks.filter((f) => f.age < f.maxAge);
+  currentBirds = [];
+  for (const flock of birdFlocks) {
+    for (const b of flock.birds) {
+      currentBirds.push({
+        x: flock.x + b.offX,
+        y: flock.y + b.offY,
+        z: flock.z + b.offZ,
+        flapPhase: b.flapPhase,
+      });
+    }
+  }
+}
+
+function birdSegments(bird) {
+  const flap = Math.sin(bird.flapPhase) * 0.4 + 0.15;
+  const span = BIRD_WING_SPAN;
+  const center = { x: bird.x, y: bird.y, z: bird.z };
+  const left = { x: bird.x - span, y: bird.y + flap, z: bird.z };
+  const right = { x: bird.x + span, y: bird.y + flap, z: bird.z };
+  return [[left, center], [center, right]];
+}
+
+const lemurState = new Map();
+
+function getNearbyLemursBase(px, pz) {
+  const list = [];
+  const cix = Math.floor(px / LEMUR_CELL), ciz = Math.floor(pz / LEMUR_CELL);
+  for (let dz = -LEMUR_RANGE; dz <= LEMUR_RANGE; dz++) {
+    for (let dx = -LEMUR_RANGE; dx <= LEMUR_RANGE; dx++) {
+      const ix = cix + dx, iz = ciz + dz;
+      const r = hash2(ix, iz, SEED + 774411);
+      if (r >= LEMUR_DENSITY) continue;
+      const jx = hash2(ix, iz, SEED + 774422);
+      const jz = hash2(ix, iz, SEED + 774433);
+      const bx = (ix + 0.5 + (jx - 0.5) * 0.7) * LEMUR_CELL;
+      const bz = (iz + 0.5 + (jz - 0.5) * 0.7) * LEMUR_CELL;
+      if (Math.hypot(bx - px, bz - pz) > MAX_DIST + LEMUR_CELL) continue;
+      list.push({ key: ix + "_" + iz, baseX: bx, baseZ: bz });
+    }
+  }
+  return list;
+}
+
+function getNearbyLemurs(px, pz) {
+  const bases = getNearbyLemursBase(px, pz);
+  const activeKeys = new Set();
+  const result = [];
+  for (const base of bases) {
+    activeKeys.add(base.key);
+    let st = lemurState.get(base.key);
+    if (!st) {
+      st = {
+        x: base.baseX, z: base.baseZ,
+        heading: Math.random() * Math.PI * 2,
+        walkTimer: LEMUR_WALK_MIN + Math.random() * (LEMUR_WALK_MAX - LEMUR_WALK_MIN),
+        pauseTimer: 0, legPhase: 0,
+      };
+      lemurState.set(base.key, st);
+    }
+    result.push({
+      key: base.key,
+      x: st.x,
+      z: st.z,
+      y: terrainHeight(st.x, st.z),
+      heading: st.heading,
+      legPhase: st.legPhase,
+    });
+  }
+  for (const k of Array.from(lemurState.keys())) {
+    if (!activeKeys.has(k)) lemurState.delete(k);
+  }
+  return result;
+}
+
+function updateLemurs(dt) {
+  for (const st of lemurState.values()) {
+    if (st.pauseTimer > 0) {
+      st.pauseTimer -= dt;
+      if (st.pauseTimer <= 0) {
+        st.heading = Math.random() * Math.PI * 2;
+        st.walkTimer = LEMUR_WALK_MIN + Math.random() * (LEMUR_WALK_MAX - LEMUR_WALK_MIN);
+      }
+      continue;
+    }
+    st.walkTimer -= dt;
+    const fx = Math.sin(st.heading), fz = Math.cos(st.heading);
+    let nx = st.x + fx * LEMUR_SPEED * dt;
+    let nz = st.z + fz * LEMUR_SPEED * dt;
+    for (const t of currentTrees) {
+      const dx = nx - t.x, dz = nz - t.z;
+      const dist = Math.hypot(dx, dz);
+      const minDist = LEMUR_RADIUS + TREE_RADIUS * t.scale;
+      if (dist > 0.0001 && dist < minDist) {
+        const push = minDist - dist;
+        nx += (dx / dist) * push;
+        nz += (dz / dist) * push;
+      }
+    }
+    for (const r of currentRocks) {
+      const dx = nx - r.x, dz = nz - r.z;
+      const dist = Math.hypot(dx, dz);
+      const minDist = LEMUR_RADIUS + ROCK_RADIUS * r.scale;
+      if (dist > 0.0001 && dist < minDist) {
+        const push = minDist - dist;
+        nx += (dx / dist) * push;
+        nz += (dz / dist) * push;
+      }
+    }
+    for (const b of currentBuildings) {
+      if (Math.hypot(nx - b.cx, nz - b.cz) > b.footRadius + 4) continue;
+      for (const seg of b.walls) {
+        [nx, nz] = resolveWallCollision(nx, nz, seg, LEMUR_RADIUS + 0.12);
+      }
+    }
+    st.x = nx;
+    st.z = nz;
+    st.legPhase += dt * 6;
+    if (st.walkTimer <= 0) {
+      st.pauseTimer = LEMUR_PAUSE_MIN + Math.random() * (LEMUR_PAUSE_MAX - LEMUR_PAUSE_MIN);
+    }
+  }
+}
+
+function lemurSegments(l) {
+  const bodyLen = LEMUR_BODY_LEN, bodyH = LEMUR_BODY_HEIGHT, bodyW = LEMUR_BODY_WIDTH;
+  const bob = Math.abs(Math.sin(l.legPhase)) * 0.05;
+  const bodyY = l.y + bodyH + bob;
+  const fx = Math.sin(l.heading), fz = Math.cos(l.heading);
+  const rx = Math.cos(l.heading), rz = -Math.sin(l.heading);
+  const pt = (right, fwd, up) => ({
+    x: l.x + rx * right + fx * fwd,
+    y: up,
+    z: l.z + rz * right + fz * fwd,
+  });
+
+  const frontTL = pt(-bodyW, bodyLen / 2, bodyY + bodyH / 2);
+  const frontTR = pt(bodyW, bodyLen / 2, bodyY + bodyH / 2);
+  const frontBL = pt(-bodyW, bodyLen / 2, bodyY - bodyH / 2);
+  const frontBR = pt(bodyW, bodyLen / 2, bodyY - bodyH / 2);
+  const backTL = pt(-bodyW * 0.8, -bodyLen / 2, bodyY + bodyH * 0.4);
+  const backTR = pt(bodyW * 0.8, -bodyLen / 2, bodyY + bodyH * 0.4);
+  const backBL = pt(-bodyW * 0.8, -bodyLen / 2, bodyY - bodyH * 0.4);
+  const backBR = pt(bodyW * 0.8, -bodyLen / 2, bodyY - bodyH * 0.4);
+
+  const earL = pt(-bodyW * 0.5, bodyLen / 2 + 0.15, bodyY + bodyH * 0.9);
+  const earR = pt(bodyW * 0.5, bodyLen / 2 + 0.15, bodyY + bodyH * 0.9);
+
+  const tailBase = pt(0, -bodyLen / 2, bodyY);
+  const tailMid = pt(0, -bodyLen / 2 - LEMUR_TAIL_LEN * 0.5, bodyY + LEMUR_TAIL_LEN * 0.5);
+  const tailTip = pt(0, -bodyLen / 2 - LEMUR_TAIL_LEN * 0.3, bodyY + LEMUR_TAIL_LEN * 0.9);
+
+  return [
+    [frontTL, frontTR], [frontTR, frontBR], [frontBR, frontBL], [frontBL, frontTL],
+    [backTL, backTR], [backTR, backBR], [backBR, backBL], [backBL, backTL],
+    [frontTL, backTL], [frontTR, backTR], [frontBL, backBL], [frontBR, backBR],
+    [frontTL, earL], [frontTR, earR],
+    [tailBase, tailMid], [tailMid, tailTip],
   ];
 }
 
@@ -701,8 +1006,10 @@ let baconCollected = 0;
 let pantsScared = 0;
 const collectedBacon = new Set();
 let currentTrees = [];
+let currentRocks = [];
 let currentBacon = [];
 let currentPants = [];
+let currentLemurs = [];
 let baconPopups = [];
 let started = false;
 let squishPhase = 0;
@@ -745,6 +1052,10 @@ function resetWorld(newSeed) {
   pantsState.clear();
   goneKeys.clear();
   baconPopups = [];
+  lemurState.clear();
+  birdFlocks = [];
+  birdSpawnTimer = 8;
+  currentBirds = [];
   squishPhase = 0;
   squishValue = 0;
   squishVel = 0;
@@ -778,9 +1089,13 @@ function update(dt) {
 
   currentBuildings = getNearbyBuildings(player.x, player.z);
   currentTrees = getNearbyTrees(player.x, player.z);
+  currentRocks = getNearbyRocks(player.x, player.z);
   refreshCurrentBacon();
   const scares = updatePants(dt);
   currentPants = getNearbyPants(player.x, player.z);
+  updateLemurs(dt);
+  currentLemurs = getNearbyLemurs(player.x, player.z);
+  updateBirds(dt);
   if (scares > 0) {
     pantsScared += scares;
     if (pantsScared > bestPantsScared) {
@@ -796,6 +1111,26 @@ function update(dt) {
       const dx = nx - t.x, dz = nz - t.z;
       const dist = Math.hypot(dx, dz);
       const minDist = CHAR_RADIUS + TREE_RADIUS * t.scale;
+      if (dist > 0.0001 && dist < minDist) {
+        const push = minDist - dist;
+        nx += (dx / dist) * push;
+        nz += (dz / dist) * push;
+      }
+    }
+    for (const r of currentRocks) {
+      const dx = nx - r.x, dz = nz - r.z;
+      const dist = Math.hypot(dx, dz);
+      const minDist = CHAR_RADIUS + ROCK_RADIUS * r.scale;
+      if (dist > 0.0001 && dist < minDist) {
+        const push = minDist - dist;
+        nx += (dx / dist) * push;
+        nz += (dz / dist) * push;
+      }
+    }
+    for (const l of currentLemurs) {
+      const dx = nx - l.x, dz = nz - l.z;
+      const dist = Math.hypot(dx, dz);
+      const minDist = CHAR_RADIUS + LEMUR_RADIUS;
       if (dist > 0.0001 && dist < minDist) {
         const push = minDist - dist;
         nx += (dx / dist) * push;
@@ -934,6 +1269,21 @@ function drawSceneObjects(cam) {
     if (c.z < NEAR - 3 || c.z > MAX_DIST + 5) continue;
     items.push({ type: "pants", dist: c.z, obj: p });
   }
+  for (const r of currentRocks) {
+    const c = project(r.x, r.y, r.z, cam);
+    if (c.z < NEAR - 3 || c.z > MAX_DIST + 5) continue;
+    items.push({ type: "rock", dist: c.z, obj: r });
+  }
+  for (const l of currentLemurs) {
+    const c = project(l.x, l.y + 0.3, l.z, cam);
+    if (c.z < NEAR - 3 || c.z > MAX_DIST + 5) continue;
+    items.push({ type: "lemur", dist: c.z, obj: l });
+  }
+  for (const bird of currentBirds) {
+    const c = project(bird.x, bird.y, bird.z, cam);
+    if (c.z < NEAR - 3 || c.z > MAX_DIST + 5) continue;
+    items.push({ type: "bird", dist: c.z, obj: bird });
+  }
   for (const b of currentBuildings) {
     for (const seg of b.walls) {
       const midx = (seg.ax + seg.bx) / 2, midz = (seg.az + seg.bz) / 2;
@@ -953,6 +1303,12 @@ function drawSceneObjects(cam) {
       strokeWireItem(baconSegments(it.obj), cam, itemColor(BACON_NEAR, it.dist), w, blur);
     } else if (it.type === "pants") {
       strokeWireItem(pantsSegments(it.obj), cam, itemColor(PANTS_NEAR, it.dist), 1.8, GLOW_BLUR);
+    } else if (it.type === "rock") {
+      strokeWireItem(rockSegments(it.obj), cam, itemColor(ROCK_NEAR, it.dist), 1, GLOW_BLUR);
+    } else if (it.type === "lemur") {
+      strokeWireItem(lemurSegments(it.obj), cam, itemColor(LEMUR_NEAR, it.dist), 1.4, GLOW_BLUR);
+    } else if (it.type === "bird") {
+      strokeWireItem(birdSegments(it.obj), cam, itemColor(BIRD_NEAR, it.dist), 1.2, GLOW_BLUR);
     } else {
       drawWallItem(it, cam);
     }
@@ -1118,8 +1474,10 @@ function loop(now) {
   } else {
     currentBuildings = getNearbyBuildings(player.x, player.z);
     currentTrees = getNearbyTrees(player.x, player.z);
+    currentRocks = getNearbyRocks(player.x, player.z);
     refreshCurrentBacon();
     currentPants = getNearbyPants(player.x, player.z);
+    currentLemurs = getNearbyLemurs(player.x, player.z);
   }
   render();
   requestAnimationFrame(loop);
