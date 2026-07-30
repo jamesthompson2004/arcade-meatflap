@@ -54,12 +54,28 @@ const BACON_TOUCH_RADIUS = 1.0;
 const BACON_HEIGHT = 1.2;
 const BACON_POPUP_DURATION = 1.1;
 const BACON_POPUP_RISE = 1.1;
-const BOSS_BACON_CHANCE = 0.04;
+const BOSS_BACON_CHANCE = 0.2;
 const BOSS_BACON_SCALE = 10;
-const BOSS_BACON_POINTS = 10;
+const BACON_SIZE_WEIGHTS = [
+  { size: 1, weight: 50 },
+  { size: 2, weight: 25 },
+  { size: 3, weight: 13 },
+  { size: 4, weight: 7 },
+  { size: 5, weight: 5 },
+];
 
 function baconClearance(scale) {
   return 0.9 + 0.15 * (scale - 1);
+}
+
+function pickBaconSize(rng) {
+  const total = BACON_SIZE_WEIGHTS.reduce((s, w) => s + w.weight, 0);
+  let r = rng() * total;
+  for (const w of BACON_SIZE_WEIGHTS) {
+    if (r < w.weight) return w.size;
+    r -= w.weight;
+  }
+  return BACON_SIZE_WEIGHTS[BACON_SIZE_WEIGHTS.length - 1].size;
 }
 
 const BUILDING_CELL = 46;
@@ -314,12 +330,14 @@ function buildBuilding(ix, iz) {
   const bacon = [];
   const baconCount = 1 + Math.floor(rng() * 3);
   for (let i = 0; i < baconCount; i++) {
+    const size = pickBaconSize(rng);
+    const clearance = baconClearance(size);
     for (let attempt = 0; attempt < 6; attempt++) {
       const lx = (rng() - 0.5) * (width - 2.4);
       const lz = (rng() - 0.5) * (depth - 2.4);
       const wx = cx + lx, wz = cz + lz;
-      if (walls.every((w) => pointToSegmentDist(wx, wz, w) > baconClearance(1))) {
-        bacon.push({ x: wx, z: wz, y: padHeight, rot: rng() * Math.PI * 2, scale: 1, boss: false, key: ix + "_" + iz + "_b" + i });
+      if (walls.every((w) => pointToSegmentDist(wx, wz, w) > clearance)) {
+        bacon.push({ x: wx, z: wz, y: padHeight, rot: rng() * Math.PI * 2, scale: size, boss: false, key: ix + "_" + iz + "_b" + i });
         break;
       }
     }
@@ -809,7 +827,7 @@ function update(dt) {
     const touchRadius = BACON_TOUCH_RADIUS * (item.scale || 1);
     if (Math.hypot(item.x - player.x, item.z - player.z) < touchRadius) {
       collectedBacon.add(item.key);
-      const points = item.boss ? BOSS_BACON_POINTS : 1;
+      const points = item.scale || 1;
       baconCollected += points;
       spawnBaconPopup(item.x, item.y + BACON_HEIGHT * (item.scale || 1), item.z, points);
       if (baconCollected > bestBacon) {
