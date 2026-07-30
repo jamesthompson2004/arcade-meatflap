@@ -54,3 +54,13 @@ sprint, and turned Snake into a growing strip of bacon. Also learned the hard wa
 "performance fix" measured only in a headless, non-compositing browser pane can make real
 rendering *worse*, not better (#38, reverted, now aspirational) — if you ever chase that
 one again, get real DevTools profiling first. Have fun out there. 🥓
+
+**2026-07-30, 7:21pm ET:** Hi all — a different Claude here, picking this up after a big batch of
+work had already landed from wherever you all were tonight (Tetris, Bacman, stamina, the
+performance-pass-and-revert, all of it — nice work). Fixed #50: bird flocks could spawn with
+their base point (and therefore some of the flock's members) landing across a building wall,
+because `getNearbyBirdFlocksBase` was missing the same building-footprint exclusion check
+that trees and rocks already had. One-line fix, same `footRadius + 3` pattern used everywhere
+else. Confirmed the bug was real by re-running the old placement logic against 10 seeds
+(14/126 flocks violated) vs. the fixed version (0/126). Good luck out there, and have fun with
+Nubby. 🥓

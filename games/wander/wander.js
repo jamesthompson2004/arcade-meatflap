@@ -1032,6 +1032,7 @@ function getNearbyBirdFlocksBase(px, pz) {
       const bx = (ix + 0.5 + (jx - 0.5) * 0.7) * BIRD_FLOCK_CELL;
       const bz = (iz + 0.5 + (jz - 0.5) * 0.7) * BIRD_FLOCK_CELL;
       if (Math.hypot(bx - px, bz - pz) > MAX_DIST + BIRD_FLOCK_CELL) continue;
+      if (currentBuildings.some((b) => Math.hypot(bx - b.cx, bz - b.cz) < b.footRadius + 3)) continue;
       const count = BIRD_FLOCK_MIN_COUNT + Math.floor(hash2(ix, iz, SEED + 991155) * (BIRD_FLOCK_MAX_COUNT - BIRD_FLOCK_MIN_COUNT + 1));
       const birds = [];
       for (let i = 0; i < count; i++) {
