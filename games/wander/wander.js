@@ -1393,7 +1393,7 @@ let currentSpeed = 0;
 let playerAirY = 0;
 let playerVY = 0;
 let jumpRequested = false;
-const keys = { forward: false, backward: false, left: false, right: false, space: false };
+const keys = { forward: false, backward: false, left: false, right: false, space: false, shift: false };
 
 function updateHud() {
   baconEl.textContent = baconCollected;
@@ -1494,7 +1494,7 @@ function update(dt) {
   if (keys.right) player.heading += TURN_SPEED * dt;
 
   const fx = Math.sin(player.heading), fz = Math.cos(player.heading);
-  const sprintMul = keys.space ? SPRINT_MULTIPLIER : 1;
+  const sprintMul = keys.shift ? SPRINT_MULTIPLIER : 1;
   let targetSpeed = 0;
   if (keys.forward) targetSpeed += MOVE_SPEED * sprintMul;
   if (keys.backward) targetSpeed -= MOVE_SPEED_BACK * sprintMul;
@@ -2022,12 +2022,15 @@ window.addEventListener("keydown", (e) => {
     if (!keys.space) jumpRequested = true;
     keys.space = true;
     e.preventDefault();
+  } else if (e.code === "ShiftLeft" || e.code === "ShiftRight") {
+    keys.shift = true;
   }
 });
 window.addEventListener("keyup", (e) => {
   const dir = KEY_MAP[e.code];
   if (dir) keys[dir] = false;
   else if (e.code === "Space") keys.space = false;
+  else if (e.code === "ShiftLeft" || e.code === "ShiftRight") keys.shift = false;
 });
 
 document.querySelectorAll(".dpad-btn").forEach((btn) => {
