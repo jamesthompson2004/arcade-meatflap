@@ -11,6 +11,8 @@ This applies from the start of building something new, not as a later retrofit.
   - Reference implementations: `games/snake/` (D-pad) and `games/scout/` (Jump/Duck buttons).
 - Before calling a game done, verify it in a mobile viewport (not just desktop) — resize the browser preview and test the touch controls, not just that the layout doesn't overflow.
 
+**Exception: `games/wander/`.** It's a WASD + camera-turn 3D-style walker, and a D-pad (the pattern above) was tried but wasn't a good experience on mobile — so it currently detects touch/coarse-pointer devices and shows a "come back on desktop" message instead of loading the game (see the inline script in `wander/index.html`). This is a deliberate, temporary call, not an oversight — don't "fix" it by just re-enabling the existing D-pad. Revisiting mobile support for Wander means designing controls actually suited to first/third-person movement (e.g. a virtual joystick + drag-to-look), not the D-pad pattern used elsewhere.
+
 ## Deployment
 
 - Hosted on Azure Static Web Apps (Free tier).
