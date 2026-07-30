@@ -120,6 +120,7 @@ const MOVE_SPEED = 9;
 const MOVE_SPEED_BACK = 5.5;
 const TURN_SPEED = 2.3;
 const CHAR_RADIUS = 0.55;
+const NUBBY_TIP_HEIGHT = 2 * CHAR_RADIUS + CHAR_RADIUS * 0.4;
 const SQUISH_AMOUNT = 0.16;
 const SQUISH_SETTLE_K = 220;
 const SQUISH_SETTLE_C = 14;
@@ -828,7 +829,7 @@ function update(dt) {
       collectedBacon.add(item.key);
       const points = item.scale || 1;
       baconCollected += points;
-      spawnBaconPopup(item.x, item.y + BACON_HEIGHT * (item.scale || 1), item.z, points);
+      spawnBaconPopup(item.x, item.y + NUBBY_TIP_HEIGHT, item.z, points);
       if (baconCollected > bestBacon) {
         bestBacon = baconCollected;
         localStorage.setItem(BEST_BACON_KEY, String(bestBacon));
@@ -1070,10 +1071,10 @@ function render() {
 
   drawSceneObjects(cam);
 
-  const R = 0.55;
+  const R = CHAR_RADIUS;
   const py = terrainHeight(player.x, player.z);
   const footY = py;
-  const tipY = py + 2 * R + R * 0.4;
+  const tipY = py + NUBBY_TIP_HEIGHT;
   const vScale = 1 + squishValue;
   const hScale = 1 - squishValue;
   const nub = sphereSegments(player.x, footY, player.z, R, vScale, hScale, tipY);
