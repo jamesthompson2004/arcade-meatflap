@@ -71,6 +71,7 @@ const PANTS_FLEE_DURATION = 3;
 const PANTS_RAMP_DURATION = 0.35;
 const PANTS_TURN_SPEED = 10;
 const PANTS_TURN_RAMP_DURATION = 0.3;
+const PANTS_FLEE_ARC_DEG = 120;
 const PANTS_BUBBLE_DURATION = 2;
 const PANTS_RADIUS = 0.4;
 const PANTS_WAIST_HALF = 0.58;
@@ -475,7 +476,9 @@ function updatePants(dt) {
       const dist = Math.hypot(st.x - player.x, st.z - player.z);
       if (dist < PANTS_NOTICE_RADIUS) {
         st.fleeing = true;
-        st.fleeHeading = Math.atan2(st.x - player.x, st.z - player.z);
+        const awayHeading = Math.atan2(st.x - player.x, st.z - player.z);
+        const arcSpread = (Math.random() - 0.5) * (PANTS_FLEE_ARC_DEG * Math.PI / 180);
+        st.fleeHeading = awayHeading + arcSpread;
         st.fleeTimer = PANTS_FLEE_DURATION;
         st.bubbleTimer = PANTS_BUBBLE_DURATION;
         st.bubbleText = PANTS_PHRASES[Math.floor(Math.random() * PANTS_PHRASES.length)];
@@ -495,6 +498,16 @@ function updatePants(dt) {
       const fx = Math.sin(st.facing), fz = Math.cos(st.facing);
       let nx = st.x + fx * speed * dt;
       let nz = st.z + fz * speed * dt;
+      for (const t of currentTrees) {
+        const dx = nx - t.x, dz = nz - t.z;
+        const treeDist = Math.hypot(dx, dz);
+        const minDist = PANTS_RADIUS + TREE_RADIUS * t.scale;
+        if (treeDist > 0.0001 && treeDist < minDist) {
+          const push = minDist - treeDist;
+          nx += (dx / treeDist) * push;
+          nz += (dz / treeDist) * push;
+        }
+      }
       for (const b of currentBuildings) {
         if (Math.hypot(nx - b.cx, nz - b.cz) > b.footRadius + 4) continue;
         for (const seg of b.walls) {
