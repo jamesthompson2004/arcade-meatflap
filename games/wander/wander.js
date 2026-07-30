@@ -51,6 +51,7 @@ const TREE_RANGE = Math.ceil(MAX_DIST / TREE_CELL) + 1;
 const TREE_DENSITY = 0.16;
 const TREE_RADIUS = 0.55;
 const BACON_TOUCH_RADIUS = 1.0;
+const BACON_HEIGHT = 1.2;
 const BACON_POPUP_DURATION = 1.1;
 const BACON_POPUP_RISE = 1.1;
 
@@ -377,7 +378,7 @@ function treeSegments(t) {
 }
 
 function baconSegments(item) {
-  const height = 1.2;
+  const height = BACON_HEIGHT;
   const cosR = Math.cos(item.rot), sinR = Math.sin(item.rot);
   const place = (right, fwd, up) => ({
     x: item.x + right * cosR - fwd * sinR,
@@ -774,7 +775,7 @@ function update(dt) {
     if (Math.hypot(item.x - player.x, item.z - player.z) < BACON_TOUCH_RADIUS) {
       collectedBacon.add(item.key);
       baconCollected++;
-      spawnBaconPopup(item.x, item.y + 0.3, item.z);
+      spawnBaconPopup(item.x, item.y + BACON_HEIGHT, item.z);
       if (baconCollected > bestBacon) {
         bestBacon = baconCollected;
         localStorage.setItem(BEST_BACON_KEY, String(bestBacon));
@@ -953,12 +954,12 @@ function drawBaconPopups(cam) {
     if (proj.z <= NEAR) continue;
     const screen = toScreen(proj);
     ctx.globalAlpha = Math.max(0, 1 - t);
-    ctx.font = "bold 16px system-ui, sans-serif";
+    ctx.font = "bold 22px system-ui, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     const color = `rgb(${BACON_NEAR[0]},${BACON_NEAR[1]},${BACON_NEAR[2]})`;
-    ctx.fillStyle = color;
-    ctx.shadowBlur = 8;
+    ctx.fillStyle = "#ffffff";
+    ctx.shadowBlur = 10;
     ctx.shadowColor = color;
     ctx.fillText("+1", screen.sx, screen.sy);
     ctx.shadowBlur = 0;
