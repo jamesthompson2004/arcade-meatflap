@@ -13,6 +13,11 @@ const MIN_TICK_MS = 70;
 const SPEEDUP_PER_FOOD = 4;
 const BEST_KEY = "meatflap-snake-best";
 
+const BACON_HEAD_COLOR = "#ffab8a";
+const BACON_BODY_COLOR = "#ff8c69";
+const BACON_STRIPE_COLOR = "#fff1e0";
+const BACON_BIT_COLOR = "#e0a868";
+
 let snake, direction, nextDirection, food, score, best, running, loopId;
 
 function resetState() {
@@ -87,17 +92,57 @@ function tick() {
   draw();
 }
 
+function segmentDir(i) {
+  if (i === 0) return direction;
+  const prev = snake[i - 1], cur = snake[i];
+  return { x: prev.x - cur.x, y: prev.y - cur.y };
+}
+
+function drawBaconSegment(segment, i) {
+  const cx = segment.x * GRID + GRID / 2;
+  const cy = segment.y * GRID + GRID / 2;
+  const size = GRID - 2;
+  const dir = segmentDir(i);
+  const angle = (dir.x || dir.y) ? Math.atan2(dir.y, dir.x) : 0;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+
+  const half = size / 2;
+  const r = size * 0.28;
+  ctx.fillStyle = i === 0 ? BACON_HEAD_COLOR : BACON_BODY_COLOR;
+  ctx.beginPath();
+  ctx.roundRect(-half, -half, size, size, r);
+  ctx.fill();
+
+  ctx.save();
+  ctx.clip();
+  ctx.strokeStyle = BACON_STRIPE_COLOR;
+  ctx.lineWidth = size * 0.16;
+  const wobble = Math.sin(i * 0.9) * size * 0.1;
+  for (const off of [-0.32, 0.32]) {
+    ctx.beginPath();
+    ctx.moveTo(-half, off * size + wobble - size * 0.18);
+    ctx.lineTo(half, off * size + wobble + size * 0.18);
+    ctx.stroke();
+  }
+  ctx.restore();
+  ctx.restore();
+}
+
 function draw() {
   ctx.fillStyle = "#10141c";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  ctx.fillStyle = "#ff4d8d";
-  ctx.fillRect(food.x * GRID + 2, food.y * GRID + 2, GRID - 4, GRID - 4);
+  ctx.fillStyle = BACON_BIT_COLOR;
+  ctx.beginPath();
+  ctx.arc(food.x * GRID + GRID / 2, food.y * GRID + GRID / 2, GRID * 0.28, 0, Math.PI * 2);
+  ctx.fill();
 
-  snake.forEach((segment, i) => {
-    ctx.fillStyle = i === 0 ? "#4dff9f" : "#2fbf7a";
-    ctx.fillRect(segment.x * GRID + 1, segment.y * GRID + 1, GRID - 2, GRID - 2);
-  });
+  for (let i = snake.length - 1; i >= 0; i--) {
+    drawBaconSegment(snake[i], i);
+  }
 }
 
 function endGame() {

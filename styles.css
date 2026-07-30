@@ -101,15 +101,15 @@ body {
 .snake-thumb {
   background: repeating-linear-gradient(
     45deg,
-    #1c3326,
-    #1c3326 10px,
-    #16291e 10px,
-    #16291e 20px
+    #3a231a,
+    #3a231a 10px,
+    #2e1c15 10px,
+    #2e1c15 20px
   );
 }
 
 .snake-thumb::after {
-  content: "🐍";
+  content: "🥓";
   font-size: 2.5rem;
 }
 
