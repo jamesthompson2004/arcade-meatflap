@@ -2,16 +2,20 @@
 
 Small browser games hosted at arcade.meatflap.com. Plain HTML/CSS/JS — no build step, no framework, no dependencies.
 
-## Requirement: every game/page must work on both desktop and mobile
+## New games target desktop first, not mobile
 
-This applies from the start of building something new, not as a later retrofit.
+Default a new game to desktop-only: keyboard/mouse controls, no touch UI. Detect
+touch/coarse-pointer devices and show a "come back on desktop" message instead of loading
+the game, rather than building on-screen controls up front. Mobile support can come later,
+per game, if it's worth the design effort — it is not a launch requirement.
 
-- Canvas/board elements need responsive sizing: `max-width: 100%; height: auto;` on the canvas.
-- Provide touch-friendly controls in addition to keyboard/mouse — an on-screen D-pad or large buttons, not swipe/tap alone. Show touch controls only on touch devices via `@media (hover: none) and (pointer: coarse)`, so desktop stays keyboard-only and uncluttered.
-  - Reference implementations: `games/snake/` (D-pad) and `games/scout/` (Jump/Duck buttons).
-- Before calling a game done, verify it in a mobile viewport (not just desktop) — resize the browser preview and test the touch controls, not just that the layout doesn't overflow.
+- Canvas/board elements should still use responsive sizing (`max-width: 100%; height: auto;`) so the desktop-only message and page layout don't break on a small screen.
+- Gate the game itself behind `window.matchMedia("(hover: none) and (pointer: coarse)")` and show a brief "this game doesn't work on mobile yet" block instead.
+  - Reference implementations: `games/wander/`, `games/tetris/`, `games/bacman/` (see the inline script in each game's `index.html`).
 
-**Exception: `games/wander/`.** It's a WASD + camera-turn 3D-style walker, and a D-pad (the pattern above) was tried but wasn't a good experience on mobile — so it currently detects touch/coarse-pointer devices and shows a "come back on desktop" message instead of loading the game (see the inline script in `wander/index.html`). This is a deliberate, temporary call, not an oversight — don't "fix" it by just re-enabling the existing D-pad. Revisiting mobile support for Wander means designing controls actually suited to first/third-person movement (e.g. a virtual joystick + drag-to-look), not the D-pad pattern used elsewhere.
+`games/snake/` and `games/scout/` predate this policy and already have full touch support
+(on-screen D-pad / Jump-Duck buttons) — that's fine as-is, but it's not the pattern to
+replicate for new games going forward.
 
 ## Workflow: commit straight to `main`, no PRs
 
