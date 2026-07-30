@@ -164,6 +164,8 @@ const PITCH_SIN = Math.sin(PITCH_RAD);
 const PITCH_TAN = Math.tan(PITCH_RAD);
 const MOVE_SPEED = 9;
 const MOVE_SPEED_BACK = 5.5;
+const NUBBY_ACCEL = 30;
+const NUBBY_DECEL = 45;
 const TURN_SPEED = 2.3;
 const CHAR_RADIUS = 0.55;
 const NUBBY_TIP_HEIGHT = 2 * CHAR_RADIUS + CHAR_RADIUS * 0.4;
@@ -464,7 +466,7 @@ function getNearbyTrees(px, pz) {
       const h2 = terrainHeight(tx, tz + 1);
       const slope = Math.abs(h1 - h0) + Math.abs(h2 - h0);
       if (slope > 3.2) continue;
-      const scale = 0.85 + hash2(ix, iz, SEED + 3333) * 0.5;
+      const scale = 0.75 + hash2(ix, iz, SEED + 3333) * 1.0;
       const key = ix + "_" + iz;
       const w = treeWobbles.get(key);
       const leanX = w ? w.dirX * w.offset : 0;
@@ -1102,6 +1104,7 @@ let started = false;
 let squishPhase = 0;
 let squishValue = 0;
 let squishVel = 0;
+let currentSpeed = 0;
 const keys = { forward: false, backward: false, left: false, right: false };
 
 function updateHud() {
@@ -1148,6 +1151,7 @@ function resetWorld(newSeed) {
   squishPhase = 0;
   squishValue = 0;
   squishVel = 0;
+  currentSpeed = 0;
   updateHud();
 }
 
@@ -1172,9 +1176,15 @@ function update(dt) {
   if (keys.right) player.heading += TURN_SPEED * dt;
 
   const fx = Math.sin(player.heading), fz = Math.cos(player.heading);
-  let moveAmt = 0;
-  if (keys.forward) moveAmt += MOVE_SPEED * dt;
-  if (keys.backward) moveAmt -= MOVE_SPEED_BACK * dt;
+  let targetSpeed = 0;
+  if (keys.forward) targetSpeed += MOVE_SPEED;
+  if (keys.backward) targetSpeed -= MOVE_SPEED_BACK;
+  const rate = Math.abs(targetSpeed) > Math.abs(currentSpeed) ? NUBBY_ACCEL : NUBBY_DECEL;
+  const maxDelta = rate * dt;
+  const speedDiff = targetSpeed - currentSpeed;
+  if (Math.abs(speedDiff) <= maxDelta) currentSpeed = targetSpeed;
+  else currentSpeed += Math.sign(speedDiff) * maxDelta;
+  const moveAmt = currentSpeed * dt;
 
   updateTreeWobbles(dt);
   currentBuildings = getNearbyBuildings(player.x, player.z);
