@@ -2,7 +2,6 @@ const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
 const scoreEl = document.getElementById("score");
 const bestEl = document.getElementById("best");
-const livesEl = document.getElementById("lives");
 const levelEl = document.getElementById("level");
 const overlay = document.getElementById("overlay");
 const overlayText = document.getElementById("overlay-text");
@@ -17,33 +16,33 @@ const TILE = canvas.width / COLS;
 const LOOP_FACTOR = 0.15;
 
 const PLAYER_SPEED = 5.4;
-const GHOST_BASE_SPEED = 4.5;
-const GHOST_SPEED_PER_LEVEL = 0.15;
-const FRIGHTENED_SPEED = 3;
-const EATEN_SPEED = 8.5;
+const IDLE_SPEED = 2.2;
+const FLEE_SPEED_BASE = 4.8;
+const FLEE_SPEED_PER_LEVEL = 0.12;
+const STUNNED_SPEED = 1.6;
 
-const FRIGHTENED_DURATION = 7;
-const SCATTER_DURATION = 6;
-const CHASE_DURATION = 18;
+const NOTICE_RADIUS_BASE = 6;
+const STUN_DURATION = 7;
+const INITIAL_RELEASE_INTERVAL = 2.5;
+const RESPAWN_DELAY = 2;
 
 const DOT_SCORE = 10;
 const PELLET_SCORE = 50;
-const GHOST_SCORE_BASE = 200;
+const CAPTURE_SCORE = 150;
+const CAPTURE_CHAIN_BASE = 200;
 
-const LIVES_START = 3;
 const BEST_KEY = "meatflap-bacman-best";
 
 const WALL_COLOR = "#5aaee0";
 const DOT_COLOR = "#e0a868";
 const PELLET_COLOR = "#ff8c69";
 const PLAYER_COLOR = "#ff4d8d";
-const GHOST_COLORS = ["#e07850", "#c060d0", "#50c0d0", "#e0c050"];
-const FRIGHTENED_COLOR = "#4d7bff";
-const FRIGHTENED_WARN_COLOR = "#e7e9ee";
+const BACON_COLORS = ["#ff8c69", "#ff6f91", "#ffa47a", "#f2795c"];
+const STUNNED_COLOR = "#ffe8d6";
+const STUNNED_WARN_COLOR = "#e7e9ee";
 
-const HOUSE = { x0: 8, x1: 10, y0: 8, y1: 10 };
-const HOUSE_DOOR = { x: 9, y: 8 };
-const HOUSE_CENTER = { x: 9, y: 9 };
+const PEN = { x0: 8, x1: 10, y0: 8, y1: 10 };
+const PEN_CENTER = { x: 9, y: 9 };
 const PLAYER_START = { x: 9, y: 15 };
 const CORNERS = [
   { x: 1, y: 1 },
@@ -51,7 +50,7 @@ const CORNERS = [
   { x: 1, y: ROWS - 2 },
   { x: COLS - 2, y: ROWS - 2 },
 ];
-const GHOST_STARTS = [
+const PEN_SPOTS = [
   { x: 8, y: 9 },
   { x: 9, y: 9 },
   { x: 10, y: 9 },
@@ -98,10 +97,9 @@ function generateMaze() {
     }
   }
 
-  for (let y = HOUSE.y0; y <= HOUSE.y1; y++) {
-    for (let x = HOUSE.x0; x <= HOUSE.x1; x++) grid[y][x] = " ";
+  for (let y = PEN.y0; y <= PEN.y1; y++) {
+    for (let x = PEN.x0; x <= PEN.x1; x++) grid[y][x] = " ";
   }
-  grid[HOUSE_DOOR.y][HOUSE_DOOR.x] = " ";
 
   for (const c of CORNERS) grid[c.y][c.x] = "o";
   grid[PLAYER_START.y][PLAYER_START.x] = " ";
@@ -163,12 +161,12 @@ function openNeighbors(cx, cy, excludeReverse) {
   return opts;
 }
 
-// Pathfinding toward a target tile uses a distance field (BFS flood-filled outward FROM
-// the target) rather than recomputing a shortest path from the ghost's position at every
-// tile. The latter can tie-break inconsistently between successive recomputations when a
-// maze loop offers multiple equally-short routes, causing ghosts to oscillate forever
-// instead of converging. Stepping "downhill" on a single static distance field can't
-// oscillate: every step strictly decreases distance, so it always reaches the target.
+// Pathfinding uses a distance field (BFS flood-filled outward FROM a target tile) instead
+// of recomputing a shortest path from the mover's position at every step. The latter can
+// tie-break inconsistently between successive recomputations when a maze loop offers
+// multiple equally-short routes, causing oscillation instead of convergence. Stepping
+// "downhill" (toward) or "uphill" (away) on one static field can't oscillate — every step
+// strictly moves the distance the right way.
 function computeDistanceField(targetX, targetY) {
   const tx = Math.max(0, Math.min(COLS - 1, Math.round(targetX)));
   const ty = Math.max(0, Math.min(ROWS - 1, Math.round(targetY)));
@@ -204,52 +202,50 @@ function stepDownhill(cx, cy, distField) {
   return best;
 }
 
-function ghostChaseTarget(g) {
-  const pcx = Math.round(player.x), pcy = Math.round(player.y);
-  if (g.personality === "direct") return { x: pcx, y: pcy };
-  if (g.personality === "ambush") {
-    return { x: pcx + player.dir.x * 4, y: pcy + player.dir.y * 4 };
-  }
-  if (g.personality === "shy") {
-    const d = Math.hypot(g.x - pcx, g.y - pcy);
-    return d > 8 ? { x: pcx, y: pcy } : g.scatterTarget;
-  }
-  // "wild" — mostly chases, occasionally darts off randomly
-  if (Math.random() < 0.15) return { x: Math.random() * COLS, y: Math.random() * ROWS };
-  return { x: pcx, y: pcy };
-}
-
-function moveGhostToward(g, cx, cy, targetX, targetY) {
-  const field = computeDistanceField(targetX, targetY);
-  const d = stepDownhill(cx, cy, field) || openNeighbors(cx, cy, g.dir)[0];
-  g.dir = d;
-  g.targetX = cx + d.x;
-  g.targetY = cy + d.y;
-}
-
-function decideGhostDir(g, cx, cy) {
-  if (g.mode === "eaten") {
-    if (cx === HOUSE_CENTER.x && cy === HOUSE_CENTER.y) {
-      g.mode = globalMode;
-      g.frightTimer = 0;
-      decideGhostDir(g, cx, cy);
-      return;
+function stepUphill(cx, cy, distField) {
+  let best = null, bestDist = -1;
+  for (const d of DIRS) {
+    const nx = cx + d.x, ny = cy + d.y;
+    if (isWall(nx, ny)) continue;
+    const dv = distField[ny][nx];
+    if (dv >= 0 && dv > bestDist) {
+      bestDist = dv;
+      best = d;
     }
-    moveGhostToward(g, cx, cy, HOUSE_CENTER.x, HOUSE_CENTER.y);
-    return;
   }
+  return best;
+}
 
-  if (g.mode === "frightened") {
-    const opts = openNeighbors(cx, cy, g.dir);
+function moveBaconToward(b, cx, cy, targetX, targetY, uphill) {
+  const field = computeDistanceField(targetX, targetY);
+  const d = (uphill ? stepUphill(cx, cy, field) : stepDownhill(cx, cy, field)) || openNeighbors(cx, cy, b.dir)[0];
+  b.dir = d;
+  b.targetX = cx + d.x;
+  b.targetY = cy + d.y;
+}
+
+// Bacon are prey, not predators: when Nubby is far away they idle near their corner; once
+// he gets close they flee (steepest ascent away from him). Getting stunned by a Boss Bacon
+// pellet is the only time they move erratically and can be scooped up for a big bonus —
+// otherwise capturing one just means out-maneuvering it while it runs.
+function decideBaconDir(b, cx, cy) {
+  if (b.mode === "stunned") {
+    const opts = openNeighbors(cx, cy, b.dir);
     const d = opts[Math.floor(Math.random() * opts.length)];
-    g.dir = d;
-    g.targetX = cx + d.x;
-    g.targetY = cy + d.y;
+    b.dir = d;
+    b.targetX = cx + d.x;
+    b.targetY = cy + d.y;
     return;
   }
 
-  const target = g.mode === "scatter" ? g.scatterTarget : ghostChaseTarget(g);
-  moveGhostToward(g, cx, cy, target.x, target.y);
+  const distToPlayer = Math.hypot(cx - player.x, cy - player.y);
+  if (distToPlayer < b.noticeRadius) {
+    b.mode = "flee";
+    moveBaconToward(b, cx, cy, player.x, player.y, true);
+  } else {
+    b.mode = "idle";
+    moveBaconToward(b, cx, cy, b.scatterTarget.x, b.scatterTarget.y, false);
+  }
 }
 
 function decidePlayerDir(cx, cy) {
@@ -265,39 +261,41 @@ function decidePlayerDir(cx, cy) {
 
 let maze = generateMaze();
 let dotsRemaining = countDots();
-let player = { x: PLAYER_START.x, y: PLAYER_START.y, dir: { x: 0, y: 0 }, nextDir: { x: 0, y: 0 }, targetX: PLAYER_START.x, targetY: PLAYER_START.y, chompPhase: 0 };
-let ghosts = [];
+let player = {
+  x: PLAYER_START.x, y: PLAYER_START.y, dir: { x: 0, y: 0 }, nextDir: { x: 0, y: 0 },
+  targetX: PLAYER_START.x, targetY: PLAYER_START.y, facing: { x: 0, y: -1 }, animPhase: 0,
+};
+let bacons = [];
 let score = 0;
 let best = Number(localStorage.getItem(BEST_KEY) || 0);
-let lives = LIVES_START;
 let level = 1;
 let running = false;
-let over = false;
-let globalMode = "scatter";
-let modeTimer = SCATTER_DURATION;
 let chainMultiplier = 0;
 
-const GHOST_RELEASE_INTERVAL = 2.5;
-
-function makeGhosts() {
-  const personalities = ["direct", "ambush", "shy", "wild"];
-  return GHOST_STARTS.map((s, i) => {
-    const g = {
-      color: GHOST_COLORS[i], personality: personalities[i], scatterTarget: CORNERS[i],
-      mode: "house", frightTimer: 0, releaseDelay: i * GHOST_RELEASE_INTERVAL,
+function makeBacons() {
+  return PEN_SPOTS.map((s, i) => {
+    const b = {
+      color: BACON_COLORS[i], scale: 1 + Math.floor(Math.random() * 3), scatterTarget: CORNERS[i],
+      mode: "house", stunTimer: 0, releaseDelay: i * INITIAL_RELEASE_INTERVAL,
+      noticeRadius: NOTICE_RADIUS_BASE + (Math.random() * 2 - 1), wobblePhase: Math.random() * Math.PI * 2,
     };
-    initEntity(g, s.x, s.y);
-    return g;
+    initEntity(b, s.x, s.y);
+    return b;
   });
+}
+
+function respawnBacon(b) {
+  const spot = PEN_SPOTS[bacons.indexOf(b)];
+  initEntity(b, spot.x, spot.y);
+  b.mode = "house";
+  b.releaseDelay = RESPAWN_DELAY;
 }
 
 function resetPositions() {
   initEntity(player, PLAYER_START.x, PLAYER_START.y);
   player.dir = { x: 0, y: 0 };
   player.nextDir = { x: 0, y: 0 };
-  ghosts = makeGhosts();
-  globalMode = "scatter";
-  modeTimer = SCATTER_DURATION;
+  bacons = makeBacons();
   chainMultiplier = 0;
 }
 
@@ -309,9 +307,7 @@ function newLevel() {
 
 function newGame() {
   score = 0;
-  lives = LIVES_START;
   level = 1;
-  over = false;
   running = true;
   newLevel();
   updateHud();
@@ -321,32 +317,11 @@ function newGame() {
 function updateHud() {
   scoreEl.textContent = score;
   bestEl.textContent = best;
-  livesEl.textContent = lives;
   levelEl.textContent = level;
-}
-
-function loseLife() {
-  lives -= 1;
-  updateHud();
-  if (lives <= 0) {
-    endGame();
-  } else {
-    resetPositions();
-  }
-}
-
-function endGame() {
-  running = false;
-  over = true;
   if (score > best) {
     best = score;
     localStorage.setItem(BEST_KEY, String(best));
   }
-  overlayText.textContent = `Game Over — Score ${score}`;
-  overlaySub.textContent = `Best: ${best}. The lemurs got the last laugh this time.`;
-  startBtn.textContent = "Play Again";
-  overlay.classList.remove("hidden");
-  updateHud();
 }
 
 function collectAt(cx, cy) {
@@ -361,10 +336,10 @@ function collectAt(cx, cy) {
     score += PELLET_SCORE;
     dotsRemaining -= 1;
     chainMultiplier = 0;
-    for (const g of ghosts) {
-      if (g.mode !== "eaten" && g.mode !== "house") {
-        g.mode = "frightened";
-        g.frightTimer = FRIGHTENED_DURATION;
+    for (const b of bacons) {
+      if (b.mode !== "house") {
+        b.mode = "stunned";
+        b.stunTimer = STUN_DURATION;
       }
     }
     updateHud();
@@ -379,55 +354,49 @@ function collectAt(cx, cy) {
 function update(dt) {
   if (!running) return;
 
-  modeTimer -= dt;
-  if (modeTimer <= 0) {
-    globalMode = globalMode === "scatter" ? "chase" : "scatter";
-    modeTimer = globalMode === "scatter" ? SCATTER_DURATION : CHASE_DURATION;
-    for (const g of ghosts) {
-      if (g.mode === "scatter" || g.mode === "chase") g.mode = globalMode;
-    }
-  }
-
   if (arrivedAtTarget(player)) {
     const cx = Math.round(player.x), cy = Math.round(player.y);
     decidePlayerDir(cx, cy);
     collectAt(cx, cy);
   }
-  if (player.dir.x || player.dir.y) player.chompPhase += dt * 10;
+  if (player.dir.x || player.dir.y) {
+    player.facing = { x: player.dir.x, y: player.dir.y };
+    player.animPhase += dt * 8;
+  }
   stepToward(player, dt, PLAYER_SPEED);
 
-  const ghostSpeedBase = GHOST_BASE_SPEED + (level - 1) * GHOST_SPEED_PER_LEVEL;
-  for (const g of ghosts) {
-    if (g.mode === "house") {
-      g.releaseDelay -= dt;
-      if (g.releaseDelay <= 0) g.mode = globalMode;
-      continue;
+  const fleeSpeed = FLEE_SPEED_BASE + (level - 1) * FLEE_SPEED_PER_LEVEL;
+  for (const b of bacons) {
+    b.wobblePhase += dt * 6;
+    if (b.mode === "house") {
+      b.releaseDelay -= dt;
+      if (b.releaseDelay > 0) continue;
+      b.mode = "idle";
     }
-    if (arrivedAtTarget(g)) {
-      const cx = Math.round(g.x), cy = Math.round(g.y);
-      decideGhostDir(g, cx, cy);
+    if (arrivedAtTarget(b)) {
+      const cx = Math.round(b.x), cy = Math.round(b.y);
+      decideBaconDir(b, cx, cy);
     }
-    if (g.mode === "frightened") {
-      g.frightTimer -= dt;
-      if (g.frightTimer <= 0) g.mode = globalMode;
+    if (b.mode === "stunned") {
+      b.stunTimer -= dt;
+      if (b.stunTimer <= 0) b.mode = "idle";
     }
-    const speed = g.mode === "frightened" ? FRIGHTENED_SPEED : g.mode === "eaten" ? EATEN_SPEED : ghostSpeedBase;
-    stepToward(g, dt, speed);
+    const speed = b.mode === "stunned" ? STUNNED_SPEED : b.mode === "flee" ? fleeSpeed : IDLE_SPEED;
+    stepToward(b, dt, speed);
   }
 
-  for (const g of ghosts) {
-    if (g.mode === "house") continue;
-    const dist = Math.hypot(player.x - g.x, player.y - g.y);
+  for (const b of bacons) {
+    if (b.mode === "house") continue;
+    const dist = Math.hypot(player.x - b.x, player.y - b.y);
     if (dist < 0.6) {
-      if (g.mode === "frightened") {
-        g.mode = "eaten";
-        score += GHOST_SCORE_BASE * Math.pow(2, chainMultiplier);
+      if (b.mode === "stunned") {
+        score += CAPTURE_CHAIN_BASE * b.scale * Math.pow(2, chainMultiplier);
         chainMultiplier += 1;
-        updateHud();
-      } else if (g.mode !== "eaten") {
-        loseLife();
-        return;
+      } else {
+        score += CAPTURE_SCORE * b.scale;
       }
+      respawnBacon(b);
+      updateHud();
     }
   }
 }
@@ -470,65 +439,71 @@ function drawDots() {
 
 function drawPlayer() {
   const px = player.x * TILE + TILE / 2, py = player.y * TILE + TILE / 2;
-  const r = TILE * 0.42;
-  let angle = 0;
-  if (player.dir.x === 1) angle = 0;
-  else if (player.dir.x === -1) angle = Math.PI;
-  else if (player.dir.y === 1) angle = Math.PI / 2;
-  else if (player.dir.y === -1) angle = -Math.PI / 2;
-  const mouth = (player.dir.x || player.dir.y) ? (Math.abs(Math.sin(player.chompPhase)) * 0.28 + 0.03) : 0.03;
+  const r = TILE * 0.38;
+  const fx = player.facing.x, fy = player.facing.y;
+  const bob = (player.dir.x || player.dir.y) ? Math.sin(player.animPhase) * TILE * 0.04 : 0;
+
   ctx.fillStyle = PLAYER_COLOR;
   ctx.shadowColor = PLAYER_COLOR;
   ctx.shadowBlur = 9;
+
   ctx.beginPath();
-  ctx.arc(px, py, r, angle + mouth * Math.PI, angle + (2 - mouth) * Math.PI);
-  ctx.lineTo(px, py);
-  ctx.closePath();
+  ctx.arc(px, py + bob, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  const tipDist = r * 0.75;
+  ctx.beginPath();
+  ctx.arc(px + fx * tipDist, py + bob + fy * tipDist, r * 0.42, 0, Math.PI * 2);
   ctx.fill();
   ctx.shadowBlur = 0;
+
+  ctx.fillStyle = "#0d0f14";
+  const eyeDist = r * 0.95;
+  ctx.beginPath();
+  ctx.arc(px + fx * eyeDist, py + bob + fy * eyeDist, r * 0.16, 0, Math.PI * 2);
+  ctx.fill();
 }
 
-function drawGhostBody(cx, cy, r, color) {
+function drawBaconCreature(b) {
+  const cx = b.x * TILE + TILE / 2, cy = b.y * TILE + TILE / 2;
+  const scaleR = 0.85 + b.scale * 0.12;
+  const len = TILE * 0.85 * scaleR, halfW = TILE * 0.3 * scaleR;
+  const dx = b.dir.x, dy = b.dir.y;
+  const angle = (dx || dy) ? Math.atan2(dy, dx) : 0;
+
+  let color = b.color;
+  if (b.mode === "stunned") {
+    color = b.stunTimer < 2 && Math.floor(b.stunTimer * 6) % 2 === 0 ? STUNNED_WARN_COLOR : STUNNED_COLOR;
+  }
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
   ctx.fillStyle = color;
   ctx.shadowColor = color;
   ctx.shadowBlur = 7;
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, Math.PI, 0);
-  const bottom = cy + r;
-  const waves = 4;
-  for (let i = 0; i <= waves; i++) {
-    const x = cx + r - (i * (2 * r)) / waves;
-    const y = i % 2 === 0 ? bottom : bottom - r * 0.35;
-    ctx.lineTo(x, y);
+
+  const seg = 8;
+  const top = [], bot = [];
+  for (let i = 0; i <= seg; i++) {
+    const t = i / seg;
+    const x = -len / 2 + t * len;
+    const wobble = Math.sin(t * Math.PI * 2.4 + b.wobblePhase) * halfW * 0.4;
+    top.push([x, -halfW * 0.6 + wobble]);
+    bot.push([x, halfW * 0.6 + wobble]);
   }
+  ctx.beginPath();
+  ctx.moveTo(top[0][0], top[0][1]);
+  for (const p of top) ctx.lineTo(p[0], p[1]);
+  for (let i = bot.length - 1; i >= 0; i--) ctx.lineTo(bot[i][0], bot[i][1]);
   ctx.closePath();
   ctx.fill();
   ctx.shadowBlur = 0;
+  ctx.restore();
 }
 
-function drawGhosts() {
-  for (const g of ghosts) {
-    const cx = g.x * TILE + TILE / 2, cy = g.y * TILE + TILE / 2;
-    const r = TILE * 0.42;
-    if (g.mode === "eaten") {
-      ctx.fillStyle = "#e7e9ee";
-      ctx.beginPath();
-      ctx.arc(cx - r * 0.3, cy, r * 0.14, 0, Math.PI * 2);
-      ctx.arc(cx + r * 0.3, cy, r * 0.14, 0, Math.PI * 2);
-      ctx.fill();
-      continue;
-    }
-    let color = g.color;
-    if (g.mode === "frightened") {
-      color = g.frightTimer < 2 && Math.floor(g.frightTimer * 6) % 2 === 0 ? FRIGHTENED_WARN_COLOR : FRIGHTENED_COLOR;
-    }
-    drawGhostBody(cx, cy, r, color);
-    ctx.fillStyle = "#0d0f14";
-    ctx.beginPath();
-    ctx.arc(cx - r * 0.32, cy - r * 0.12, r * 0.15, 0, Math.PI * 2);
-    ctx.arc(cx + r * 0.32, cy - r * 0.12, r * 0.15, 0, Math.PI * 2);
-    ctx.fill();
-  }
+function drawBacons() {
+  for (const b of bacons) drawBaconCreature(b);
 }
 
 function draw() {
@@ -536,7 +511,7 @@ function draw() {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   drawWalls();
   drawDots();
-  drawGhosts();
+  drawBacons();
   drawPlayer();
 }
 
