@@ -201,6 +201,10 @@ const NUBBY_TIP_HEIGHT = 2 * CHAR_RADIUS + CHAR_RADIUS * 0.4;
 const SQUISH_AMOUNT = 0.16;
 const SQUISH_SETTLE_K = 220;
 const SQUISH_SETTLE_C = 14;
+const SPRINT_MULTIPLIER = 1.6;
+const JUMP_VELOCITY = 8.2;
+const JUMP_GRAVITY = 24;
+const LEMUR_JUMP_CLEAR_HEIGHT = 0.5;
 
 const BEST_BACON_KEY = "meatflap-wander-best-bacon";
 const BEST_PANTS_KEY = "meatflap-wander-best-pants";
@@ -648,11 +652,15 @@ function getNearbyRocks(px, pz) {
   return rocks;
 }
 
+function rockHeight(scale) {
+  return 0.5 * scale;
+}
+
 function rockSegments(rock) {
   const N = 6;
   const baseR = 0.55 * rock.scale;
   const topR = 0.35 * rock.scale;
-  const height = 0.5 * rock.scale;
+  const height = rockHeight(rock.scale);
   const cosR = Math.cos(rock.rot), sinR = Math.sin(rock.rot);
   const place = (lx, lz, ly) => ({
     x: rock.x + lx * cosR - lz * sinR,
@@ -1382,7 +1390,10 @@ let squishPhase = 0;
 let squishValue = 0;
 let squishVel = 0;
 let currentSpeed = 0;
-const keys = { forward: false, backward: false, left: false, right: false };
+let playerAirY = 0;
+let playerVY = 0;
+let jumpRequested = false;
+const keys = { forward: false, backward: false, left: false, right: false, space: false, shift: false };
 
 function updateHud() {
   baconEl.textContent = baconCollected;
@@ -1456,6 +1467,9 @@ function resetWorld(newSeed) {
   squishValue = 0;
   squishVel = 0;
   currentSpeed = 0;
+  playerAirY = 0;
+  playerVY = 0;
+  jumpRequested = false;
   updateHud();
 }
 
@@ -1480,15 +1494,29 @@ function update(dt) {
   if (keys.right) player.heading += TURN_SPEED * dt;
 
   const fx = Math.sin(player.heading), fz = Math.cos(player.heading);
+  const sprintMul = keys.shift ? SPRINT_MULTIPLIER : 1;
   let targetSpeed = 0;
-  if (keys.forward) targetSpeed += MOVE_SPEED;
-  if (keys.backward) targetSpeed -= MOVE_SPEED_BACK;
+  if (keys.forward) targetSpeed += MOVE_SPEED * sprintMul;
+  if (keys.backward) targetSpeed -= MOVE_SPEED_BACK * sprintMul;
   const rate = Math.abs(targetSpeed) > Math.abs(currentSpeed) ? NUBBY_ACCEL : NUBBY_DECEL;
   const maxDelta = rate * dt;
   const speedDiff = targetSpeed - currentSpeed;
   if (Math.abs(speedDiff) <= maxDelta) currentSpeed = targetSpeed;
   else currentSpeed += Math.sign(speedDiff) * maxDelta;
   const moveAmt = currentSpeed * dt;
+
+  if (jumpRequested) {
+    jumpRequested = false;
+    if (playerAirY <= 0) playerVY = JUMP_VELOCITY;
+  }
+  if (playerAirY > 0 || playerVY !== 0) {
+    playerVY -= JUMP_GRAVITY * dt;
+    playerAirY += playerVY * dt;
+    if (playerAirY <= 0) {
+      playerAirY = 0;
+      playerVY = 0;
+    }
+  }
 
   updateTreeWobbles(dt);
   currentBuildings = getNearbyBuildings(player.x, player.z);
@@ -1525,6 +1553,7 @@ function update(dt) {
       }
     }
     for (const r of currentRocks) {
+      if (playerAirY > rockHeight(r.scale)) continue;
       const dx = nx - r.x, dz = nz - r.z;
       const dist = Math.hypot(dx, dz);
       const minDist = CHAR_RADIUS + ROCK_RADIUS * r.scale;
@@ -1535,6 +1564,7 @@ function update(dt) {
       }
     }
     for (const l of currentLemurs) {
+      if (playerAirY > LEMUR_JUMP_CLEAR_HEIGHT) continue;
       const dx = nx - l.x, dz = nz - l.z;
       const dist = Math.hypot(dx, dz);
       const minDist = CHAR_RADIUS + LEMUR_RADIUS;
@@ -1916,7 +1946,7 @@ function render() {
   drawSceneObjects(cam);
 
   const R = CHAR_RADIUS;
-  const py = terrainHeight(player.x, player.z);
+  const py = terrainHeight(player.x, player.z) + playerAirY;
   const footY = py;
   const tipY = py + NUBBY_TIP_HEIGHT;
   const vScale = 1 + squishValue;
@@ -1988,11 +2018,19 @@ window.addEventListener("keydown", (e) => {
   if (dir) {
     keys[dir] = true;
     e.preventDefault();
+  } else if (e.code === "Space") {
+    if (!keys.space) jumpRequested = true;
+    keys.space = true;
+    e.preventDefault();
+  } else if (e.code === "ShiftLeft" || e.code === "ShiftRight") {
+    keys.shift = true;
   }
 });
 window.addEventListener("keyup", (e) => {
   const dir = KEY_MAP[e.code];
   if (dir) keys[dir] = false;
+  else if (e.code === "Space") keys.space = false;
+  else if (e.code === "ShiftLeft" || e.code === "ShiftRight") keys.shift = false;
 });
 
 document.querySelectorAll(".dpad-btn").forEach((btn) => {
