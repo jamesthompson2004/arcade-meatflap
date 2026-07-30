@@ -149,6 +149,15 @@ body {
   font-size: 2.5rem;
 }
 
+.bacman-thumb {
+  background: linear-gradient(135deg, #2a1a2e, #1a2740 85%);
+}
+
+.bacman-thumb::after {
+  content: "👻";
+  font-size: 2.5rem;
+}
+
 .soon-thumb {
   background: #1b1f2a;
   color: var(--muted);

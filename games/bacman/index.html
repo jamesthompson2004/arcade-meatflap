@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bacman — Meatflap Arcade</title>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="bacman.css">
+</head>
+<body>
+  <a class="back-link" href="../../">← Arcade</a>
+
+  <div id="mobile-block" class="mobile-block hidden">
+    <h1>Bacman</h1>
+    <p>This game does not yet work on mobile. Please come back on a desktop browser!</p>
+  </div>
+
+  <div id="bacman-wrap" class="bacman-wrap">
+    <h1>Bacman</h1>
+    <div class="hud">
+      <span>Score: <strong id="score">0</strong></span>
+      <span>Best: <strong id="best">0</strong></span>
+      <span>Lives: <strong id="lives">3</strong></span>
+      <span>Level: <strong id="level">1</strong></span>
+    </div>
+
+    <canvas id="board" width="380" height="380"></canvas>
+
+    <p class="hint">Arrow keys / WASD to steer Nubby through the maze. Eat Boss Bacon to turn the lemurs edible.</p>
+
+    <div id="overlay" class="overlay">
+      <p id="overlay-text">Bacman</p>
+      <p id="overlay-sub">Nubby's after every last bit of bacon — but the rival lemurs want it too. Grab a Boss Bacon to turn the tables.</p>
+      <button id="start-btn">Start</button>
+    </div>
+  </div>
+
+  <script>
+    if (window.matchMedia("(hover: none) and (pointer: coarse)").matches) {
+      document.getElementById("bacman-wrap").classList.add("hidden");
+      document.getElementById("mobile-block").classList.remove("hidden");
+    } else {
+      const s = document.createElement("script");
+      s.src = "bacman.js";
+      document.body.appendChild(s);
+    }
+  </script>
+</body>
+</html>
