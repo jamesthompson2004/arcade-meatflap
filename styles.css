@@ -140,6 +140,15 @@ body {
   font-size: 2.5rem;
 }
 
+.tetris-thumb {
+  background: linear-gradient(135deg, #241a3a, #1a2740 85%);
+}
+
+.tetris-thumb::after {
+  content: "🧱";
+  font-size: 2.5rem;
+}
+
 .soon-thumb {
   background: #1b1f2a;
   color: var(--muted);

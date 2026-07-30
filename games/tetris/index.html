@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tetris — Meatflap Arcade</title>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="tetris.css">
+</head>
+<body>
+  <a class="back-link" href="../../">← Arcade</a>
+
+  <div id="mobile-block" class="mobile-block hidden">
+    <h1>Tetris</h1>
+    <p>This game does not yet work on mobile. Please come back on a desktop browser!</p>
+  </div>
+
+  <div id="tetris-wrap" class="tetris-wrap">
+    <h1>Tetris</h1>
+
+    <div class="tetris-layout">
+      <canvas id="board" width="240" height="480"></canvas>
+
+      <div class="side-panel">
+        <div class="panel-box">
+          <span class="panel-label">Next</span>
+          <canvas id="next" width="96" height="96"></canvas>
+        </div>
+        <div class="panel-box stats">
+          <span>Score<strong id="score">0</strong></span>
+          <span>Best<strong id="best">0</strong></span>
+          <span>Level<strong id="level">1</strong></span>
+          <span>Lines<strong id="lines">0</strong></span>
+          <span class="bacon-stat">🥓 Sizzled<strong id="bacon-count">0</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <p class="hint">Arrow keys / WASD to move &amp; rotate. Space to hard drop.</p>
+
+    <div id="overlay" class="overlay">
+      <p id="overlay-text">Tetris</p>
+      <p id="overlay-sub">Classic falling blocks — with a bacon-greased surprise waiting in the stack.</p>
+      <button id="start-btn">Start</button>
+    </div>
+  </div>
+
+  <script>
+    if (window.matchMedia("(hover: none) and (pointer: coarse)").matches) {
+      document.getElementById("tetris-wrap").classList.add("hidden");
+      document.getElementById("mobile-block").classList.remove("hidden");
+    } else {
+      const s = document.createElement("script");
+      s.src = "tetris.js";
+      document.body.appendChild(s);
+    }
+  </script>
+</body>
+</html>
