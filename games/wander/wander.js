@@ -140,6 +140,7 @@ const BACON_MILL_PAUSE_MIN = 1.2;
 const BACON_MILL_PAUSE_MAX = 3.2;
 const BACON_MILL_BOUNCE_FREQ = 5;
 const BACON_MILL_BOUNCE_HEIGHT = 0.14;
+const BACON_MILL_SQUISH_AMOUNT = 0.32;
 
 const BUILDING_CELL = 46;
 const BUILDING_RANGE = Math.ceil((MAX_DIST + 25) / BUILDING_CELL) + 1;
@@ -514,6 +515,12 @@ function updateBaconMilling(dt) {
       item.rot = st.heading;
       if (st.pauseTimer <= 0) {
         item.y += Math.abs(Math.sin(st.bouncePhase)) * BACON_MILL_BOUNCE_HEIGHT;
+        // Squash-and-stretch: springy tall at the top of each hop, folded short and wide
+        // at ground contact — cos(2x) hits +1 at contact (phase 0, pi, ...) and -1 at the
+        // apex (phase pi/2, 3pi/2, ...), matching |sin| bounce's own contact/apex timing.
+        item.squish = Math.cos(2 * st.bouncePhase);
+      } else {
+        item.squish = 0;
       }
     }
 
@@ -688,7 +695,10 @@ function rockSegments(rock) {
 
 function baconSegments(item) {
   const scale = item.scale || 1;
-  const height = BACON_HEIGHT * scale;
+  const squish = item.squish || 0;
+  const stretch = 1 - BACON_MILL_SQUISH_AMOUNT * squish;
+  const fold = 1 + BACON_MILL_SQUISH_AMOUNT * squish;
+  const height = BACON_HEIGHT * scale * stretch;
   const cosR = Math.cos(item.rot), sinR = Math.sin(item.rot);
   const place = (right, fwd, up) => ({
     x: item.x + right * cosR - fwd * sinR,
@@ -700,9 +710,9 @@ function baconSegments(item) {
   for (let i = 0; i <= M; i++) {
     const t = i / M;
     const up = t * height;
-    const wave = Math.sin(t * Math.PI * 2.6) * 0.18 * scale;
-    frontPts.push(place(wave, 0.11 * scale, up));
-    backPts.push(place(wave, -0.11 * scale, up));
+    const wave = Math.sin(t * Math.PI * 2.6) * 0.18 * scale * fold;
+    frontPts.push(place(wave, 0.11 * scale * fold, up));
+    backPts.push(place(wave, -0.11 * scale * fold, up));
   }
   const segs = [];
   for (let i = 0; i < M; i++) {
