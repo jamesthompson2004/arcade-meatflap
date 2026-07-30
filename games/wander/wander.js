@@ -207,6 +207,12 @@ const JUMP_VELOCITY = 8.2;
 const JUMP_GRAVITY = 24;
 const LEMUR_JUMP_CLEAR_HEIGHT = 0.5;
 
+const STAMINA_DRAIN_RATE = 1 / 3.5;
+const STAMINA_REFILL_RATE = 1 / 5;
+const STAMINA_BAR_FADE_SPEED = 6;
+const STAMINA_BAR_WIDTH = 70;
+const STAMINA_BAR_HEIGHT = 10;
+
 const BEST_BACON_KEY = "meatflap-wander-best-bacon";
 const BEST_PANTS_KEY = "meatflap-wander-best-pants";
 const BG_COLOR = [13, 15, 20];
@@ -1403,6 +1409,9 @@ let currentSpeed = 0;
 let playerAirY = 0;
 let playerVY = 0;
 let jumpRequested = false;
+let stamina = 1;
+let staminaExhausted = false;
+let staminaBarOpacity = 0;
 const keys = { forward: false, backward: false, left: false, right: false, space: false, shift: false };
 
 function updateHud() {
@@ -1480,6 +1489,9 @@ function resetWorld(newSeed) {
   playerAirY = 0;
   playerVY = 0;
   jumpRequested = false;
+  stamina = 1;
+  staminaExhausted = false;
+  staminaBarOpacity = 0;
   updateHud();
 }
 
@@ -1504,7 +1516,22 @@ function update(dt) {
   if (keys.right) player.heading += TURN_SPEED * dt;
 
   const fx = Math.sin(player.heading), fz = Math.cos(player.heading);
-  const sprintMul = keys.shift ? SPRINT_MULTIPLIER : 1;
+  const hasMoveInput = keys.forward || keys.backward;
+  const wantsSprint = keys.shift && !staminaExhausted && stamina > 0;
+  const sprinting = wantsSprint && hasMoveInput;
+  const sprintMul = wantsSprint ? SPRINT_MULTIPLIER : 1;
+
+  if (sprinting) {
+    stamina = Math.max(0, stamina - STAMINA_DRAIN_RATE * dt);
+    if (stamina <= 0) staminaExhausted = true;
+  } else if (stamina < 1) {
+    stamina = Math.min(1, stamina + STAMINA_REFILL_RATE * dt);
+    if (stamina >= 1) staminaExhausted = false;
+  }
+  const staminaBarTarget = sprinting ? 1 : 0;
+  const barDiff = staminaBarTarget - staminaBarOpacity;
+  staminaBarOpacity += Math.sign(barDiff) * Math.min(Math.abs(barDiff), STAMINA_BAR_FADE_SPEED * dt);
+
   let targetSpeed = 0;
   if (keys.forward) targetSpeed += MOVE_SPEED * sprintMul;
   if (keys.backward) targetSpeed -= MOVE_SPEED_BACK * sprintMul;
@@ -1885,6 +1912,45 @@ function drawBaconDespawns(cam) {
   }
 }
 
+function drawStaminaBar(cam) {
+  if (staminaBarOpacity <= 0.001) return;
+  const headY = terrainHeight(player.x, player.z) + NUBBY_TIP_HEIGHT + 0.5;
+  const proj = project(player.x, headY, player.z, cam);
+  if (proj.z <= NEAR) return;
+  const screen = toScreen(proj);
+
+  const w = STAMINA_BAR_WIDTH, h = STAMINA_BAR_HEIGHT;
+  const bx = screen.sx - w / 2, by = screen.sy - h / 2;
+  ctx.globalAlpha = staminaBarOpacity;
+
+  ctx.fillStyle = "rgba(13,15,20,0.75)";
+  ctx.strokeStyle = "rgba(255,255,255,0.5)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(bx, by, w, h, 4);
+  else ctx.rect(bx, by, w, h);
+  ctx.fill();
+  ctx.stroke();
+
+  const pad = 1.5;
+  const fillW = Math.max(0, (w - pad * 2) * stamina);
+  ctx.fillStyle = stamina > 0.3 ? "#4dff9f" : "#ff4d8d";
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(bx + pad, by + pad, fillW, h - pad * 2, 2);
+  else ctx.rect(bx + pad, by + pad, fillW, h - pad * 2);
+  ctx.fill();
+
+  ctx.font = "bold 11px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#ffffff";
+  ctx.shadowBlur = 4;
+  ctx.shadowColor = "rgba(0,0,0,0.8)";
+  ctx.fillText(`${Math.round(stamina * 100)}%`, screen.sx, by - 9);
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+}
+
 function drawBaconPopups(cam) {
   for (const p of baconPopups) {
     const t = p.age / BACON_POPUP_DURATION;
@@ -1991,6 +2057,7 @@ function render() {
   drawBirdBubbles(cam);
   drawBaconDespawns(cam);
   drawBaconPopups(cam);
+  drawStaminaBar(cam);
 }
 
 let lastTime = null;
