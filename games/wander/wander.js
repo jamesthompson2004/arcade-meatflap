@@ -103,14 +103,14 @@ const BACON_BOSS_TOUCH_RADIUS = 2.4;
 const BACON_HEIGHT = 1.2;
 const BACON_POPUP_DURATION = 1.1;
 const BACON_POPUP_RISE = 1.1;
-const BOSS_BACON_CHANCE = 0.2;
+const BOSS_BACON_CHANCE = 0.1;
 const BOSS_BACON_SCALE = 10;
 const BACON_SIZE_WEIGHTS = [
-  { size: 1, weight: 50 },
-  { size: 2, weight: 25 },
-  { size: 3, weight: 13 },
-  { size: 4, weight: 7 },
-  { size: 5, weight: 5 },
+  { size: 1, weight: 32 },
+  { size: 2, weight: 27 },
+  { size: 3, weight: 20 },
+  { size: 4, weight: 13 },
+  { size: 5, weight: 8 },
 ];
 
 function baconClearance(scale) {
