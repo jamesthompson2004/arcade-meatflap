@@ -212,6 +212,7 @@ const STAMINA_REFILL_RATE = 1 / 5;
 const STAMINA_BAR_FADE_SPEED = 6;
 const STAMINA_BAR_WIDTH = 70;
 const STAMINA_BAR_HEIGHT = 10;
+const RUNNING_NOTICE_MULTIPLIER = 1.5;
 
 const BEST_BACON_KEY = "meatflap-wander-best-bacon";
 const BEST_PANTS_KEY = "meatflap-wander-best-pants";
@@ -842,12 +843,12 @@ function getNearbyPants(px, pz) {
   return result;
 }
 
-function updatePants(dt) {
+function updatePants(dt, noticeMultiplier = 1) {
   let scares = 0;
   for (const [key, st] of pantsState.entries()) {
     if (!st.fleeing) {
       let scareX = player.x, scareZ = player.z;
-      let noticed = Math.hypot(st.x - player.x, st.z - player.z) < PANTS_NOTICE_RADIUS;
+      let noticed = Math.hypot(st.x - player.x, st.z - player.z) < PANTS_NOTICE_RADIUS * noticeMultiplier;
       if (!noticed) {
         for (const l of currentLemurs) {
           if (Math.hypot(st.x - l.x, st.z - l.z) < PANTS_NOTICE_RADIUS) {
@@ -1065,11 +1066,11 @@ function refreshBirdFlocks(px, pz) {
   }
 }
 
-function updateBirdFlocks(dt) {
+function updateBirdFlocks(dt, noticeMultiplier = 1) {
   for (const [key, st] of birdFlockState.entries()) {
     if (!st.flying) {
       const dist = Math.hypot(st.x - player.x, st.z - player.z);
-      if (dist < BIRD_NOTICE_RADIUS) {
+      if (dist < BIRD_NOTICE_RADIUS * noticeMultiplier) {
         st.flying = true;
         const awayHeading = Math.atan2(st.x - player.x, st.z - player.z);
         const arcSpread = (Math.random() - 0.5) * (BIRD_FLEE_ARC_DEG * Math.PI / 180);
@@ -1520,6 +1521,7 @@ function update(dt) {
   const wantsSprint = keys.shift && !staminaExhausted && stamina > 0;
   const sprinting = wantsSprint && hasMoveInput;
   const sprintMul = wantsSprint ? SPRINT_MULTIPLIER : 1;
+  const noticeMultiplier = sprinting ? RUNNING_NOTICE_MULTIPLIER : 1;
 
   if (sprinting) {
     stamina = Math.max(0, stamina - STAMINA_DRAIN_RATE * dt);
@@ -1528,7 +1530,7 @@ function update(dt) {
     stamina = Math.min(1, stamina + STAMINA_REFILL_RATE * dt);
     if (stamina >= 1) staminaExhausted = false;
   }
-  const staminaBarTarget = sprinting ? 1 : 0;
+  const staminaBarTarget = sprinting || stamina < 1 ? 1 : 0;
   const barDiff = staminaBarTarget - staminaBarOpacity;
   staminaBarOpacity += Math.sign(barDiff) * Math.min(Math.abs(barDiff), STAMINA_BAR_FADE_SPEED * dt);
 
@@ -1563,10 +1565,10 @@ function update(dt) {
   refreshCurrentBacon();
   updateLemurs(dt);
   currentLemurs = getNearbyLemurs(player.x, player.z);
-  const scares = updatePants(dt);
+  const scares = updatePants(dt, noticeMultiplier);
   currentPants = getNearbyPants(player.x, player.z);
   refreshBirdFlocks(player.x, player.z);
-  updateBirdFlocks(dt);
+  updateBirdFlocks(dt, noticeMultiplier);
   if (scares > 0) {
     pantsScared += scares;
     if (pantsScared > bestPantsScared) {
