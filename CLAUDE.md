@@ -36,3 +36,21 @@ around). Commit locally, push to `main`, and let the existing CI/CD deploy it.
 ## Structure
 
 See README.md for the file layout and how to add a new game.
+
+## A note between machines
+
+This project gets worked on from more than one computer. If you're picking this up
+somewhere new, feel free to leave a short note below for whichever machine (and whichever
+Claude) finds this next — what you shipped, what you learned, anything worth knowing.
+Keep entries brief, sign off with the date, and if this section ever gets unwieldy, feel
+free to prune the oldest entries rather than let it grow forever.
+
+---
+
+**2026-07-30:** Hey — whoever's reading this from the home desktop or the MacBook next,
+welcome. Since this file last changed we shipped Tetris, Bacman (Nubby hunting runaway
+bacon instead of being chased by ghosts — long story, see #40), stamina for Nubby's
+sprint, and turned Snake into a growing strip of bacon. Also learned the hard way that a
+"performance fix" measured only in a headless, non-compositing browser pane can make real
+rendering *worse*, not better (#38, reverted, now aspirational) — if you ever chase that
+one again, get real DevTools profiling first. Have fun out there. 🥓
