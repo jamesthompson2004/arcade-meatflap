@@ -51,6 +51,8 @@ const TREE_RANGE = Math.ceil(MAX_DIST / TREE_CELL) + 1;
 const TREE_DENSITY = 0.16;
 const TREE_RADIUS = 0.55;
 const BACON_TOUCH_RADIUS = 1.0;
+const BACON_POPUP_DURATION = 1.1;
+const BACON_POPUP_RISE = 1.1;
 
 const BUILDING_CELL = 46;
 const BUILDING_RANGE = Math.ceil((MAX_DIST + 25) / BUILDING_CELL) + 1;
@@ -66,6 +68,8 @@ const PANTS_NOTICE_RADIUS = 7;
 const PANTS_FLEE_SPEED = 9.5;
 const PANTS_FLEE_DURATION = 3;
 const PANTS_RAMP_DURATION = 0.35;
+const PANTS_TURN_SPEED = 10;
+const PANTS_TURN_RAMP_DURATION = 0.3;
 const PANTS_BUBBLE_DURATION = 2;
 const PANTS_RADIUS = 0.4;
 const PANTS_WAIST_HALF = 0.58;
@@ -427,6 +431,13 @@ function getNearbyPantsBase(px, pz) {
 
 const pantsState = new Map();
 
+function angleDiff(target, current) {
+  let d = (target - current) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
 function getNearbyPants(px, pz) {
   const bases = getNearbyPantsBase(px, pz);
   const activeKeys = new Set();
@@ -435,7 +446,7 @@ function getNearbyPants(px, pz) {
     activeKeys.add(base.key);
     let st = pantsState.get(base.key);
     if (!st) {
-      st = { x: base.baseX, z: base.baseZ, fleeing: false, fleeHeading: 0, legPhase: 0, fleeTimer: 0, bubbleTimer: 0, bubbleText: "" };
+      st = { x: base.baseX, z: base.baseZ, fleeing: false, facing: 0, fleeHeading: 0, legPhase: 0, fleeTimer: 0, bubbleTimer: 0, bubbleText: "" };
       pantsState.set(base.key, st);
     }
     result.push({
@@ -443,7 +454,7 @@ function getNearbyPants(px, pz) {
       x: st.x,
       z: st.z,
       y: terrainHeight(st.x, st.z),
-      heading: st.fleeHeading,
+      heading: st.facing,
       legPhase: st.legPhase,
       fleeing: st.fleeing,
       bubbleTimer: st.bubbleTimer,
@@ -473,8 +484,14 @@ function updatePants(dt) {
     if (st.fleeing) {
       const elapsed = PANTS_FLEE_DURATION - st.fleeTimer;
       const rampT = Math.min(1, elapsed / PANTS_RAMP_DURATION);
+      const turnRampT = Math.min(1, elapsed / PANTS_TURN_RAMP_DURATION);
+      const turnStep = PANTS_TURN_SPEED * turnRampT * dt;
+      const diff = angleDiff(st.fleeHeading, st.facing);
+      if (Math.abs(diff) <= turnStep) st.facing = st.fleeHeading;
+      else st.facing += Math.sign(diff) * turnStep;
+
       const speed = PANTS_FLEE_SPEED * rampT;
-      const fx = Math.sin(st.fleeHeading), fz = Math.cos(st.fleeHeading);
+      const fx = Math.sin(st.facing), fz = Math.cos(st.facing);
       let nx = st.x + fx * speed * dt;
       let nz = st.z + fz * speed * dt;
       for (const b of currentBuildings) {
@@ -632,6 +649,7 @@ const collectedBacon = new Set();
 let currentTrees = [];
 let currentBacon = [];
 let currentPants = [];
+let baconPopups = [];
 let started = false;
 let squishPhase = 0;
 let squishValue = 0;
@@ -655,6 +673,15 @@ function refreshCurrentBacon() {
   }
 }
 
+function spawnBaconPopup(x, y, z) {
+  baconPopups.push({ x, y, z, age: 0 });
+}
+
+function updateBaconPopups(dt) {
+  for (const p of baconPopups) p.age += dt;
+  baconPopups = baconPopups.filter((p) => p.age < BACON_POPUP_DURATION);
+}
+
 function resetWorld(newSeed) {
   SEED = newSeed;
   player = { x: 0, z: 0, heading: 0 };
@@ -663,6 +690,7 @@ function resetWorld(newSeed) {
   collectedBacon.clear();
   pantsState.clear();
   goneKeys.clear();
+  baconPopups = [];
   squishPhase = 0;
   squishValue = 0;
   squishVel = 0;
@@ -746,6 +774,7 @@ function update(dt) {
     if (Math.hypot(item.x - player.x, item.z - player.z) < BACON_TOUCH_RADIUS) {
       collectedBacon.add(item.key);
       baconCollected++;
+      spawnBaconPopup(item.x, item.y + 0.3, item.z);
       if (baconCollected > bestBacon) {
         bestBacon = baconCollected;
         localStorage.setItem(BEST_BACON_KEY, String(bestBacon));
@@ -753,6 +782,7 @@ function update(dt) {
     }
   }
   currentBacon = currentBacon.filter((item) => !collectedBacon.has(item.key));
+  updateBaconPopups(dt);
 
   updateHud();
 }
@@ -916,6 +946,26 @@ function drawPantsBubbles(cam) {
   }
 }
 
+function drawBaconPopups(cam) {
+  for (const p of baconPopups) {
+    const t = p.age / BACON_POPUP_DURATION;
+    const proj = project(p.x, p.y + t * BACON_POPUP_RISE, p.z, cam);
+    if (proj.z <= NEAR) continue;
+    const screen = toScreen(proj);
+    ctx.globalAlpha = Math.max(0, 1 - t);
+    ctx.font = "bold 16px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const color = `rgb(${BACON_NEAR[0]},${BACON_NEAR[1]},${BACON_NEAR[2]})`;
+    ctx.fillStyle = color;
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = color;
+    ctx.fillText("+1", screen.sx, screen.sy);
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+  }
+}
+
 function render() {
   const cam = getCamera();
   const horizonY = Math.max(0, Math.min(H, CY - PITCH_TAN * FOCAL));
@@ -997,6 +1047,7 @@ function render() {
   }
 
   drawPantsBubbles(cam);
+  drawBaconPopups(cam);
 }
 
 let lastTime = null;
