@@ -13,6 +13,15 @@ This applies from the start of building something new, not as a later retrofit.
 
 **Exception: `games/wander/`.** It's a WASD + camera-turn 3D-style walker, and a D-pad (the pattern above) was tried but wasn't a good experience on mobile — so it currently detects touch/coarse-pointer devices and shows a "come back on desktop" message instead of loading the game (see the inline script in `wander/index.html`). This is a deliberate, temporary call, not an oversight — don't "fix" it by just re-enabling the existing D-pad. Revisiting mobile support for Wander means designing controls actually suited to first/third-person movement (e.g. a virtual joystick + drag-to-look), not the D-pad pattern used elsewhere.
 
+## Workflow: commit straight to `main`, no PRs
+
+Push directly to `main` instead of opening a pull request. This is a single-maintainer
+project, so the PR review step isn't buying anything — and Azure Static Web Apps' Free
+tier has a small cap on concurrent PR-preview staging environments, so opening PRs
+routinely trips a `maximum number of staging environments` deploy failure on the preview
+build (harmless — the real `main` deploy is unaffected — but it's just noise to work
+around). Commit locally, push to `main`, and let the existing CI/CD deploy it.
+
 ## Deployment
 
 - Hosted on Azure Static Web Apps (Free tier).
