@@ -50,6 +50,11 @@ const TREE_CELL = 9;
 const TREE_RANGE = Math.ceil(MAX_DIST / TREE_CELL) + 1;
 const TREE_DENSITY = 0.16;
 const TREE_RADIUS = 0.55;
+const TREE_WOBBLE_K = 90;
+const TREE_WOBBLE_C = 9;
+const TREE_WOBBLE_KICK = 4;
+const TREE_WOBBLE_MAX_VEL = 6;
+const TREE_WOBBLE_MAX_OFFSET = 0.6;
 
 const ROCK_CELL = 9;
 const ROCK_RANGE = Math.ceil(MAX_DIST / ROCK_CELL) + 1;
@@ -142,6 +147,13 @@ const PANTS_PHRASES = [
   "Hee hee!", "Eek!", "Nope nope nope!", "Whee!", "Yikes!",
   "Can't catch me!", "Squeak!", "Not today!", "Byeee!", "Tag, you're it!",
 ];
+
+const SKY_CYCLE = 120;
+const SUN_RISE_BEARING = 0;
+const SUN_RADIUS_FRAC = 0.045;
+const MOON_RADIUS_FRAC = 0.035;
+const SUN_COLOR = "#ffd166";
+const MOON_COLOR = "#dfe6f0";
 
 const CHASE_DIST = 9;
 const CHASE_HEIGHT = 2.8;
@@ -406,6 +418,33 @@ function getNearbyBuildings(px, pz) {
   return list;
 }
 
+const treeWobbles = new Map();
+
+function triggerTreeWobble(key, dirX, dirZ) {
+  let w = treeWobbles.get(key);
+  if (!w) {
+    w = { dirX, dirZ, offset: 0, vel: 0 };
+    treeWobbles.set(key, w);
+  } else {
+    w.dirX = dirX;
+    w.dirZ = dirZ;
+  }
+  w.vel = Math.min(TREE_WOBBLE_MAX_VEL, w.vel + TREE_WOBBLE_KICK);
+}
+
+function updateTreeWobbles(dt) {
+  for (const [key, w] of treeWobbles.entries()) {
+    const accel = -TREE_WOBBLE_K * w.offset - TREE_WOBBLE_C * w.vel;
+    w.vel += accel * dt;
+    w.offset += w.vel * dt;
+    if (w.offset > TREE_WOBBLE_MAX_OFFSET) { w.offset = TREE_WOBBLE_MAX_OFFSET; w.vel = Math.min(w.vel, 0); }
+    if (w.offset < -TREE_WOBBLE_MAX_OFFSET) { w.offset = -TREE_WOBBLE_MAX_OFFSET; w.vel = Math.max(w.vel, 0); }
+    if (Math.abs(w.offset) < 0.001 && Math.abs(w.vel) < 0.01) {
+      treeWobbles.delete(key);
+    }
+  }
+}
+
 function getNearbyTrees(px, pz) {
   const trees = [];
   const cix = Math.floor(px / TREE_CELL), ciz = Math.floor(pz / TREE_CELL);
@@ -426,7 +465,11 @@ function getNearbyTrees(px, pz) {
       const slope = Math.abs(h1 - h0) + Math.abs(h2 - h0);
       if (slope > 3.2) continue;
       const scale = 0.85 + hash2(ix, iz, SEED + 3333) * 0.5;
-      trees.push({ x: tx, z: tz, y: h0, key: ix + "_" + iz, scale });
+      const key = ix + "_" + iz;
+      const w = treeWobbles.get(key);
+      const leanX = w ? w.dirX * w.offset : 0;
+      const leanZ = w ? w.dirZ * w.offset : 0;
+      trees.push({ x: tx, z: tz, y: h0, key, scale, leanX, leanZ });
     }
   }
   return trees;
@@ -436,13 +479,15 @@ function treeSegments(t) {
   const trunkH = 1.6 * t.scale;
   const baseR = 0.9 * t.scale;
   const baseY = t.y + trunkH;
-  const apex = { x: t.x, y: baseY + 2.6 * t.scale, z: t.z };
-  const segs = [[{ x: t.x, y: t.y, z: t.z }, { x: t.x, y: baseY, z: t.z }]];
+  const canopyX = t.x + t.leanX, canopyZ = t.z + t.leanZ;
+  const trunkTop = { x: canopyX, y: baseY, z: canopyZ };
+  const apex = { x: t.x + t.leanX * 1.5, y: baseY + 2.6 * t.scale, z: t.z + t.leanZ * 1.5 };
+  const segs = [[{ x: t.x, y: t.y, z: t.z }, trunkTop]];
   const N = 6;
   const pts = [];
   for (let i = 0; i < N; i++) {
     const a = (i / N) * Math.PI * 2;
-    pts.push({ x: t.x + Math.cos(a) * baseR, y: baseY, z: t.z + Math.sin(a) * baseR });
+    pts.push({ x: canopyX + Math.cos(a) * baseR, y: baseY, z: canopyZ + Math.sin(a) * baseR });
   }
   for (let i = 0; i < N; i++) {
     segs.push([pts[i], pts[(i + 1) % N]]);
@@ -569,6 +614,48 @@ function angleDiff(target, current) {
   if (d > Math.PI) d -= Math.PI * 2;
   if (d < -Math.PI) d += Math.PI * 2;
   return d;
+}
+
+let skyTime = 0;
+
+function celestialPosition(angle, riseBearing) {
+  const a = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+  const elevation = Math.sin(a);
+  const azimuth = a < Math.PI / 2 || a >= Math.PI * 1.5 ? riseBearing : riseBearing + Math.PI;
+  return { elevation, azimuth };
+}
+
+function celestialScreenPos(elevation, azimuth, playerHeading) {
+  const relBearing = angleDiff(azimuth, playerHeading);
+  if (Math.abs(relBearing) > 1.3) return null;
+  const vertAngle = elevation + PITCH_RAD;
+  if (Math.abs(vertAngle) > 1.3) return null;
+  return { sx: CX + Math.tan(relBearing) * FOCAL, sy: CY - Math.tan(vertAngle) * FOCAL };
+}
+
+function drawSkyBody(elevation, azimuth, radius, color) {
+  if (elevation <= 0) return;
+  const pos = celestialScreenPos(elevation, azimuth, player.heading);
+  if (!pos) return;
+  ctx.beginPath();
+  ctx.arc(pos.sx, pos.sy, radius, 0, Math.PI * 2);
+  ctx.strokeStyle = color;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 10;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+}
+
+function drawSkyBodies() {
+  const sunAngle = (skyTime / SKY_CYCLE) * Math.PI * 2;
+  const moonAngle = sunAngle + Math.PI;
+  const sun = celestialPosition(sunAngle, SUN_RISE_BEARING);
+  const moon = celestialPosition(moonAngle, SUN_RISE_BEARING);
+  const radius = Math.min(W, H) * SUN_RADIUS_FRAC;
+  const moonRadius = Math.min(W, H) * MOON_RADIUS_FRAC;
+  drawSkyBody(sun.elevation, sun.azimuth, radius, SUN_COLOR);
+  drawSkyBody(moon.elevation, moon.azimuth, moonRadius, MOON_COLOR);
 }
 
 function getNearbyPants(px, pz) {
@@ -1056,6 +1143,8 @@ function resetWorld(newSeed) {
   birdFlocks = [];
   birdSpawnTimer = 8;
   currentBirds = [];
+  treeWobbles.clear();
+  skyTime = 0;
   squishPhase = 0;
   squishValue = 0;
   squishVel = 0;
@@ -1087,6 +1176,7 @@ function update(dt) {
   if (keys.forward) moveAmt += MOVE_SPEED * dt;
   if (keys.backward) moveAmt -= MOVE_SPEED_BACK * dt;
 
+  updateTreeWobbles(dt);
   currentBuildings = getNearbyBuildings(player.x, player.z);
   currentTrees = getNearbyTrees(player.x, player.z);
   currentRocks = getNearbyRocks(player.x, player.z);
@@ -1115,6 +1205,7 @@ function update(dt) {
         const push = minDist - dist;
         nx += (dx / dist) * push;
         nz += (dz / dist) * push;
+        triggerTreeWobble(t.key, -dx / dist, -dz / dist);
       }
     }
     for (const r of currentRocks) {
@@ -1391,6 +1482,8 @@ function render() {
   ctx.fillStyle = skyGrad;
   ctx.fillRect(0, 0, W, horizonY);
 
+  drawSkyBodies();
+
   bandPaths = { grid: [] };
   for (let i = 0; i < BANDS; i++) {
     bandPaths.grid.push(new Path2D());
@@ -1469,6 +1562,7 @@ function loop(now) {
   let dt = (now - lastTime) / 1000;
   lastTime = now;
   dt = Math.min(dt, 0.05);
+  skyTime += dt;
   if (started) {
     update(dt);
   } else {
