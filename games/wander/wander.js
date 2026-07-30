@@ -54,6 +54,13 @@ const BACON_TOUCH_RADIUS = 1.0;
 const BACON_HEIGHT = 1.2;
 const BACON_POPUP_DURATION = 1.1;
 const BACON_POPUP_RISE = 1.1;
+const BOSS_BACON_CHANCE = 0.04;
+const BOSS_BACON_SCALE = 10;
+const BOSS_BACON_POINTS = 10;
+
+function baconClearance(scale) {
+  return 0.9 + 0.15 * (scale - 1);
+}
 
 const BUILDING_CELL = 46;
 const BUILDING_RANGE = Math.ceil((MAX_DIST + 25) / BUILDING_CELL) + 1;
@@ -311,8 +318,21 @@ function buildBuilding(ix, iz) {
       const lx = (rng() - 0.5) * (width - 2.4);
       const lz = (rng() - 0.5) * (depth - 2.4);
       const wx = cx + lx, wz = cz + lz;
-      if (walls.every((w) => pointToSegmentDist(wx, wz, w) > 0.9)) {
-        bacon.push({ x: wx, z: wz, y: padHeight, rot: rng() * Math.PI * 2, key: ix + "_" + iz + "_b" + i });
+      if (walls.every((w) => pointToSegmentDist(wx, wz, w) > baconClearance(1))) {
+        bacon.push({ x: wx, z: wz, y: padHeight, rot: rng() * Math.PI * 2, scale: 1, boss: false, key: ix + "_" + iz + "_b" + i });
+        break;
+      }
+    }
+  }
+
+  if (rng() < BOSS_BACON_CHANCE) {
+    const clearance = baconClearance(BOSS_BACON_SCALE);
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const lx = (rng() - 0.5) * (width - 2.4);
+      const lz = (rng() - 0.5) * (depth - 2.4);
+      const wx = cx + lx, wz = cz + lz;
+      if (walls.every((w) => pointToSegmentDist(wx, wz, w) > clearance)) {
+        bacon.push({ x: wx, z: wz, y: padHeight, rot: rng() * Math.PI * 2, scale: BOSS_BACON_SCALE, boss: true, key: ix + "_" + iz + "_bossb" });
         break;
       }
     }
@@ -379,7 +399,8 @@ function treeSegments(t) {
 }
 
 function baconSegments(item) {
-  const height = BACON_HEIGHT;
+  const scale = item.scale || 1;
+  const height = BACON_HEIGHT * scale;
   const cosR = Math.cos(item.rot), sinR = Math.sin(item.rot);
   const place = (right, fwd, up) => ({
     x: item.x + right * cosR - fwd * sinR,
@@ -391,9 +412,9 @@ function baconSegments(item) {
   for (let i = 0; i <= M; i++) {
     const t = i / M;
     const up = t * height;
-    const wave = Math.sin(t * Math.PI * 2.6) * 0.18;
-    frontPts.push(place(wave, 0.11, up));
-    backPts.push(place(wave, -0.11, up));
+    const wave = Math.sin(t * Math.PI * 2.6) * 0.18 * scale;
+    frontPts.push(place(wave, 0.11 * scale, up));
+    backPts.push(place(wave, -0.11 * scale, up));
   }
   const segs = [];
   for (let i = 0; i < M; i++) {
@@ -687,8 +708,8 @@ function refreshCurrentBacon() {
   }
 }
 
-function spawnBaconPopup(x, y, z) {
-  baconPopups.push({ x, y, z, age: 0 });
+function spawnBaconPopup(x, y, z, points) {
+  baconPopups.push({ x, y, z, age: 0, text: `+${points}` });
 }
 
 function updateBaconPopups(dt) {
@@ -785,10 +806,12 @@ function update(dt) {
   }
 
   for (const item of currentBacon) {
-    if (Math.hypot(item.x - player.x, item.z - player.z) < BACON_TOUCH_RADIUS) {
+    const touchRadius = BACON_TOUCH_RADIUS * (item.scale || 1);
+    if (Math.hypot(item.x - player.x, item.z - player.z) < touchRadius) {
       collectedBacon.add(item.key);
-      baconCollected++;
-      spawnBaconPopup(item.x, item.y + BACON_HEIGHT, item.z);
+      const points = item.boss ? BOSS_BACON_POINTS : 1;
+      baconCollected += points;
+      spawnBaconPopup(item.x, item.y + BACON_HEIGHT * (item.scale || 1), item.z, points);
       if (baconCollected > bestBacon) {
         bestBacon = baconCollected;
         localStorage.setItem(BEST_BACON_KEY, String(bestBacon));
@@ -907,7 +930,9 @@ function drawSceneObjects(cam) {
     if (it.type === "tree") {
       strokeWireItem(treeSegments(it.obj), cam, itemColor(TREE_NEAR, it.dist), 1, GLOW_BLUR);
     } else if (it.type === "bacon") {
-      strokeWireItem(baconSegments(it.obj), cam, itemColor(BACON_NEAR, it.dist), 1.4, BACON_GLOW_BLUR);
+      const w = it.obj.boss ? 2.4 : 1.4;
+      const blur = it.obj.boss ? BACON_GLOW_BLUR * 1.6 : BACON_GLOW_BLUR;
+      strokeWireItem(baconSegments(it.obj), cam, itemColor(BACON_NEAR, it.dist), w, blur);
     } else if (it.type === "pants") {
       strokeWireItem(pantsSegments(it.obj), cam, itemColor(PANTS_NEAR, it.dist), 1.8, GLOW_BLUR);
     } else {
@@ -974,7 +999,7 @@ function drawBaconPopups(cam) {
     ctx.fillStyle = "#ffffff";
     ctx.shadowBlur = 10;
     ctx.shadowColor = color;
-    ctx.fillText("+1", screen.sx, screen.sy);
+    ctx.fillText(p.text, screen.sx, screen.sy);
     ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
   }
