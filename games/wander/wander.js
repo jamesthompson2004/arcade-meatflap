@@ -103,6 +103,12 @@ const BACON_BOSS_TOUCH_RADIUS = 2.4;
 const BACON_HEIGHT = 1.2;
 const BACON_POPUP_DURATION = 1.1;
 const BACON_POPUP_RISE = 1.1;
+const BACON_DESPAWN_BOUNCE_DURATION = 0.26;
+const BACON_DESPAWN_BOUNCE_HEIGHT = 0.85;
+const BACON_DESPAWN_POP_DURATION = 0.3;
+const BACON_DESPAWN_TOTAL_DURATION = BACON_DESPAWN_BOUNCE_DURATION + BACON_DESPAWN_POP_DURATION;
+const BACON_DESPAWN_PARTICLE_COUNT = 9;
+const BACON_DESPAWN_PARTICLE_DIST = 0.9;
 const BOSS_BACON_CHANCE = 0.1;
 const BOSS_BACON_SCALE = 10;
 const BACON_SIZE_WEIGHTS = [
@@ -1240,6 +1246,7 @@ let currentBacon = [];
 let currentPants = [];
 let currentLemurs = [];
 let baconPopups = [];
+let baconDespawns = [];
 let started = false;
 let squishPhase = 0;
 let squishValue = 0;
@@ -1273,6 +1280,31 @@ function updateBaconPopups(dt) {
   baconPopups = baconPopups.filter((p) => p.age < BACON_POPUP_DURATION);
 }
 
+function triggerBaconDespawn(item) {
+  const scale = item.scale || 1;
+  const sizeFactor = Math.min(2.5, Math.sqrt(scale));
+  const count = BACON_DESPAWN_PARTICLE_COUNT + (item.boss ? 5 : 0);
+  const particles = [];
+  for (let i = 0; i < count; i++) {
+    const theta = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
+    particles.push({
+      dx: Math.sin(theta),
+      dz: Math.cos(theta),
+      dy: 0.4 + Math.random() * 0.8,
+      dist: BACON_DESPAWN_PARTICLE_DIST * sizeFactor * (0.7 + Math.random() * 0.6),
+    });
+  }
+  baconDespawns.push({
+    x: item.x, y: item.y, z: item.z, rot: item.rot, scale,
+    boss: !!item.boss, sizeFactor, age: 0, particles,
+  });
+}
+
+function updateBaconDespawns(dt) {
+  for (const d of baconDespawns) d.age += dt;
+  baconDespawns = baconDespawns.filter((d) => d.age < BACON_DESPAWN_TOTAL_DURATION);
+}
+
 function resetWorld(newSeed) {
   SEED = newSeed;
   player = { x: 0, z: 0, heading: 0 };
@@ -1282,6 +1314,7 @@ function resetWorld(newSeed) {
   pantsState.clear();
   goneKeys.clear();
   baconPopups = [];
+  baconDespawns = [];
   lemurState.clear();
   birdFlockState.clear();
   goneBirdFlocks.clear();
@@ -1408,6 +1441,7 @@ function update(dt) {
       const points = item.scale || 1;
       baconCollected += points;
       spawnBaconPopup(item.x, item.y + NUBBY_TIP_HEIGHT, item.z, points);
+      triggerBaconDespawn(item);
       if (baconCollected > bestBacon) {
         bestBacon = baconCollected;
         localStorage.setItem(BEST_BACON_KEY, String(bestBacon));
@@ -1416,6 +1450,7 @@ function update(dt) {
   }
   currentBacon = currentBacon.filter((item) => !collectedBacon.has(item.key));
   updateBaconPopups(dt);
+  updateBaconDespawns(dt);
 
   updateHud();
 }
@@ -1646,6 +1681,32 @@ function drawBirdBubbles(cam) {
   }
 }
 
+function drawBaconDespawns(cam) {
+  for (const d of baconDespawns) {
+    const w = d.boss ? 2.4 : 1.4;
+    const blur = d.boss ? BACON_GLOW_BLUR * 1.6 : BACON_GLOW_BLUR;
+    const camDist = project(d.x, d.y, d.z, cam).z;
+    const color = itemColor(BACON_NEAR, camDist);
+    if (d.age < BACON_DESPAWN_BOUNCE_DURATION) {
+      const t = d.age / BACON_DESPAWN_BOUNCE_DURATION;
+      const bounceY = Math.sin(t * Math.PI) * BACON_DESPAWN_BOUNCE_HEIGHT * d.sizeFactor * 0.5;
+      const segs = baconSegments({ x: d.x, y: d.y + bounceY, z: d.z, rot: d.rot, scale: d.scale });
+      strokeWireItem(segs, cam, color, w, blur);
+    } else {
+      const t2 = (d.age - BACON_DESPAWN_BOUNCE_DURATION) / BACON_DESPAWN_POP_DURATION;
+      const alpha = Math.max(0, 1 - t2);
+      const innerT = Math.max(0, t2 - 0.15);
+      const segs = d.particles.map((p) => [
+        { x: d.x + p.dx * p.dist * innerT * 0.6, y: d.y + p.dy * p.dist * innerT * 0.6, z: d.z + p.dz * p.dist * innerT * 0.6 },
+        { x: d.x + p.dx * p.dist * t2, y: d.y + p.dy * p.dist * t2, z: d.z + p.dz * p.dist * t2 },
+      ]);
+      ctx.globalAlpha = alpha;
+      strokeWireItem(segs, cam, color, w, blur);
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+
 function drawBaconPopups(cam) {
   for (const p of baconPopups) {
     const t = p.age / BACON_POPUP_DURATION;
@@ -1750,6 +1811,7 @@ function render() {
 
   drawPantsBubbles(cam);
   drawBirdBubbles(cam);
+  drawBaconDespawns(cam);
   drawBaconPopups(cam);
 }
 
