@@ -10,7 +10,12 @@
 <body>
   <a class="back-link" href="../../">← Arcade</a>
 
-  <div class="wander-wrap">
+  <div id="mobile-block" class="mobile-block hidden">
+    <h1>Wander</h1>
+    <p>This game does not yet work on mobile. Please come back on a desktop browser!</p>
+  </div>
+
+  <div id="wander-wrap" class="wander-wrap">
     <h1>Wander</h1>
     <p class="lead">You're playing as <strong>Nubby</strong>.</p>
     <div class="hud">
@@ -43,6 +48,15 @@
     </div>
   </div>
 
-  <script src="wander.js"></script>
+  <script>
+    if (window.matchMedia("(hover: none) and (pointer: coarse)").matches) {
+      document.getElementById("wander-wrap").classList.add("hidden");
+      document.getElementById("mobile-block").classList.remove("hidden");
+    } else {
+      const s = document.createElement("script");
+      s.src = "wander.js";
+      document.body.appendChild(s);
+    }
+  </script>
 </body>
 </html>

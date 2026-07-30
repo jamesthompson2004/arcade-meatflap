@@ -20,6 +20,37 @@
   max-width: 840px;
 }
 
+.wander-wrap.hidden {
+  display: none;
+}
+
+.mobile-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  min-height: 60vh;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+  text-align: center;
+}
+
+.mobile-block.hidden {
+  display: none;
+}
+
+.mobile-block h1 {
+  margin: 0;
+}
+
+.mobile-block p {
+  color: var(--muted);
+  font-size: 0.95rem;
+  margin: 0;
+}
+
 .lead {
   color: var(--muted);
   font-size: 0.95rem;
