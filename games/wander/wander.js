@@ -720,10 +720,21 @@ function updatePants(dt) {
   let scares = 0;
   for (const [key, st] of pantsState.entries()) {
     if (!st.fleeing) {
-      const dist = Math.hypot(st.x - player.x, st.z - player.z);
-      if (dist < PANTS_NOTICE_RADIUS) {
+      let scareX = player.x, scareZ = player.z;
+      let noticed = Math.hypot(st.x - player.x, st.z - player.z) < PANTS_NOTICE_RADIUS;
+      if (!noticed) {
+        for (const l of currentLemurs) {
+          if (Math.hypot(st.x - l.x, st.z - l.z) < PANTS_NOTICE_RADIUS) {
+            noticed = true;
+            scareX = l.x;
+            scareZ = l.z;
+            break;
+          }
+        }
+      }
+      if (noticed) {
         st.fleeing = true;
-        const awayHeading = Math.atan2(st.x - player.x, st.z - player.z);
+        const awayHeading = Math.atan2(st.x - scareX, st.z - scareZ);
         const arcSpread = (Math.random() - 0.5) * (PANTS_FLEE_ARC_DEG * Math.PI / 180);
         st.fleeHeading = awayHeading + arcSpread;
         st.fleeTimer = PANTS_FLEE_DURATION;
@@ -1091,6 +1102,7 @@ function updateLemurs(dt) {
         const push = minDist - dist;
         nx += (dx / dist) * push;
         nz += (dz / dist) * push;
+        triggerTreeWobble(t.key, -dx / dist, -dz / dist);
       }
     }
     for (const r of currentRocks) {
@@ -1101,6 +1113,22 @@ function updateLemurs(dt) {
         const push = minDist - dist;
         nx += (dx / dist) * push;
         nz += (dz / dist) * push;
+      }
+    }
+    for (const p of currentPants) {
+      const dx = nx - p.x, dz = nz - p.z;
+      const dist = Math.hypot(dx, dz);
+      const minDist = LEMUR_RADIUS + PANTS_RADIUS;
+      if (dist > 0.0001 && dist < minDist) {
+        const push = minDist - dist;
+        const ux = dx / dist, uz = dz / dist;
+        nx += ux * push * 0.5;
+        nz += uz * push * 0.5;
+        const pst = pantsState.get(p.key);
+        if (pst) {
+          pst.x -= ux * push * 0.5;
+          pst.z -= uz * push * 0.5;
+        }
       }
     }
     for (const b of currentBuildings) {
@@ -1364,10 +1392,10 @@ function update(dt) {
   currentTrees = getNearbyTrees(player.x, player.z);
   currentRocks = getNearbyRocks(player.x, player.z);
   refreshCurrentBacon();
-  const scares = updatePants(dt);
-  currentPants = getNearbyPants(player.x, player.z);
   updateLemurs(dt);
   currentLemurs = getNearbyLemurs(player.x, player.z);
+  const scares = updatePants(dt);
+  currentPants = getNearbyPants(player.x, player.z);
   refreshBirdFlocks(player.x, player.z);
   updateBirdFlocks(dt);
   if (scares > 0) {
@@ -1408,8 +1436,14 @@ function update(dt) {
       const minDist = CHAR_RADIUS + LEMUR_RADIUS;
       if (dist > 0.0001 && dist < minDist) {
         const push = minDist - dist;
-        nx += (dx / dist) * push;
-        nz += (dz / dist) * push;
+        const ux = dx / dist, uz = dz / dist;
+        nx += ux * push * 0.5;
+        nz += uz * push * 0.5;
+        const lst = lemurState.get(l.key);
+        if (lst) {
+          lst.x -= ux * push * 0.5;
+          lst.z -= uz * push * 0.5;
+        }
       }
     }
     for (const b of currentBuildings) {
