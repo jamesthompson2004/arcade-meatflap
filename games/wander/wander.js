@@ -99,6 +99,7 @@ const LEMUR_BODY_WIDTH = 0.3;
 const LEMUR_TAIL_LEN = 0.9;
 const LEMUR_NEAR = [225, 175, 110];
 const BACON_TOUCH_RADIUS = 1.0;
+const BACON_BOSS_TOUCH_RADIUS = 2.4;
 const BACON_HEIGHT = 1.2;
 const BACON_POPUP_DURATION = 1.1;
 const BACON_POPUP_RISE = 1.1;
@@ -136,6 +137,11 @@ const WALL_HEIGHT = 3;
 const PANTS_CELL = 13;
 const PANTS_RANGE = Math.ceil(MAX_DIST / PANTS_CELL) + 1;
 const PANTS_DENSITY = 0.09;
+const PANTS_WALK_SPEED = 2.2;
+const PANTS_WALK_MIN = 1.2;
+const PANTS_WALK_MAX = 3.2;
+const PANTS_PAUSE_MIN = 0.8;
+const PANTS_PAUSE_MAX = 2.2;
 const PANTS_NOTICE_RADIUS = 7;
 const PANTS_FLEE_SPEED = 9.5;
 const PANTS_FLEE_DURATION = 3;
@@ -677,7 +683,13 @@ function getNearbyPants(px, pz) {
     activeKeys.add(base.key);
     let st = pantsState.get(base.key);
     if (!st) {
-      st = { x: base.baseX, z: base.baseZ, fleeing: false, facing: 0, fleeHeading: 0, legPhase: 0, fleeTimer: 0, bubbleTimer: 0, bubbleText: "" };
+      st = {
+        x: base.baseX, z: base.baseZ,
+        fleeing: false, facing: Math.random() * Math.PI * 2, fleeHeading: 0, legPhase: 0,
+        fleeTimer: 0, bubbleTimer: 0, bubbleText: "",
+        walkTimer: PANTS_WALK_MIN + Math.random() * (PANTS_WALK_MAX - PANTS_WALK_MIN),
+        pauseTimer: 0,
+      };
       pantsState.set(base.key, st);
     }
     result.push({
@@ -712,6 +724,49 @@ function updatePants(dt) {
         st.bubbleTimer = PANTS_BUBBLE_DURATION;
         st.bubbleText = PANTS_PHRASES[Math.floor(Math.random() * PANTS_PHRASES.length)];
         scares++;
+      } else if (st.pauseTimer > 0) {
+        st.pauseTimer -= dt;
+        if (st.pauseTimer <= 0) {
+          st.facing = Math.random() * Math.PI * 2;
+          st.walkTimer = PANTS_WALK_MIN + Math.random() * (PANTS_WALK_MAX - PANTS_WALK_MIN);
+        }
+      } else {
+        st.walkTimer -= dt;
+        const fx = Math.sin(st.facing), fz = Math.cos(st.facing);
+        let nx = st.x + fx * PANTS_WALK_SPEED * dt;
+        let nz = st.z + fz * PANTS_WALK_SPEED * dt;
+        for (const t of currentTrees) {
+          const dx = nx - t.x, dz = nz - t.z;
+          const treeDist = Math.hypot(dx, dz);
+          const minDist = PANTS_RADIUS + TREE_RADIUS * t.scale;
+          if (treeDist > 0.0001 && treeDist < minDist) {
+            const push = minDist - treeDist;
+            nx += (dx / treeDist) * push;
+            nz += (dz / treeDist) * push;
+          }
+        }
+        for (const r of currentRocks) {
+          const dx = nx - r.x, dz = nz - r.z;
+          const rockDist = Math.hypot(dx, dz);
+          const minDist = PANTS_RADIUS + ROCK_RADIUS * r.scale;
+          if (rockDist > 0.0001 && rockDist < minDist) {
+            const push = minDist - rockDist;
+            nx += (dx / rockDist) * push;
+            nz += (dz / rockDist) * push;
+          }
+        }
+        for (const b of currentBuildings) {
+          if (Math.hypot(nx - b.cx, nz - b.cz) > b.footRadius + 4) continue;
+          for (const seg of b.walls) {
+            [nx, nz] = resolveWallCollision(nx, nz, seg, PANTS_RADIUS + 0.12);
+          }
+        }
+        st.x = nx;
+        st.z = nz;
+        st.legPhase += dt * 6;
+        if (st.walkTimer <= 0) {
+          st.pauseTimer = PANTS_PAUSE_MIN + Math.random() * (PANTS_PAUSE_MAX - PANTS_PAUSE_MIN);
+        }
       }
     }
     if (st.fleeing) {
@@ -768,7 +823,7 @@ function updatePants(dt) {
 }
 
 function pantsSegments(p) {
-  const bounce = p.fleeing ? Math.abs(Math.sin(p.legPhase)) * 0.1 : 0;
+  const bounce = Math.abs(Math.sin(p.legPhase)) * (p.fleeing ? 0.1 : 0.05);
   const beltBottomY = p.y + PANTS_LEG_LEN + bounce;
   const beltTopY = beltBottomY + PANTS_BELT_HEIGHT;
   const fx = Math.sin(p.heading), fz = Math.cos(p.heading);
@@ -1347,7 +1402,8 @@ function update(dt) {
   }
 
   for (const item of currentBacon) {
-    if (Math.hypot(item.x - player.x, item.z - player.z) < BACON_TOUCH_RADIUS) {
+    const touchRadius = item.boss ? BACON_BOSS_TOUCH_RADIUS : BACON_TOUCH_RADIUS;
+    if (Math.hypot(item.x - player.x, item.z - player.z) < touchRadius) {
       collectedBacon.add(item.key);
       const points = item.scale || 1;
       baconCollected += points;
