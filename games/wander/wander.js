@@ -133,6 +133,14 @@ function pickBaconSize(rng) {
   return BACON_SIZE_WEIGHTS[BACON_SIZE_WEIGHTS.length - 1].size;
 }
 
+const BACON_MILL_SPEED = 0.6;
+const BACON_MILL_WALK_MIN = 0.5;
+const BACON_MILL_WALK_MAX = 1.4;
+const BACON_MILL_PAUSE_MIN = 1.2;
+const BACON_MILL_PAUSE_MAX = 3.2;
+const BACON_MILL_BOUNCE_FREQ = 5;
+const BACON_MILL_BOUNCE_HEIGHT = 0.14;
+
 const BUILDING_CELL = 46;
 const BUILDING_RANGE = Math.ceil((MAX_DIST + 25) / BUILDING_CELL) + 1;
 const BUILDING_DENSITY = 0.28;
@@ -206,6 +214,10 @@ const CHAR_COLOR = "#ff4d8d";
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
+}
+
+function clamp(v, lo, hi) {
+  return Math.min(Math.max(v, lo), hi);
 }
 
 function smooth(t) {
@@ -439,6 +451,96 @@ function getNearbyBuildings(px, pz) {
     }
   }
   return list;
+}
+
+// Bacon mill about inside their building's footprint (never through the door — that gap
+// is only for the player), bouncing gently off each other and the walls. Confinement uses
+// the building's rectangular footprint rather than `walls`, since `walls` has a door gap.
+const baconMillState = new Map();
+
+function updateBaconMilling(dt) {
+  const activeKeys = new Set();
+  for (const b of currentBuildings) {
+    const hw = b.width / 2, hd = b.depth / 2;
+
+    for (const item of b.bacon) {
+      activeKeys.add(item.key);
+      if (collectedBacon.has(item.key)) continue;
+
+      const clearance = baconClearance(item.scale);
+      const minX = b.cx - hw + clearance, maxX = b.cx + hw - clearance;
+      const minZ = b.cz - hd + clearance, maxZ = b.cz + hd - clearance;
+
+      let st = baconMillState.get(item.key);
+      if (!st) {
+        st = {
+          x: clamp(item.x, minX, maxX), z: clamp(item.z, minZ, maxZ),
+          heading: item.rot, walkTimer: 0,
+          pauseTimer: BACON_MILL_PAUSE_MIN + Math.random() * (BACON_MILL_PAUSE_MAX - BACON_MILL_PAUSE_MIN),
+          bouncePhase: 0,
+        };
+        baconMillState.set(item.key, st);
+      }
+      st.minX = minX; st.maxX = maxX; st.minZ = minZ; st.maxZ = maxZ;
+
+      if (st.pauseTimer > 0) {
+        st.pauseTimer -= dt;
+        if (st.pauseTimer <= 0) {
+          st.heading = Math.random() * Math.PI * 2;
+          st.walkTimer = BACON_MILL_WALK_MIN + Math.random() * (BACON_MILL_WALK_MAX - BACON_MILL_WALK_MIN);
+        }
+      } else {
+        st.walkTimer -= dt;
+        const speed = BACON_MILL_SPEED / Math.sqrt(Math.max(1, item.scale));
+        const fx = Math.sin(st.heading), fz = Math.cos(st.heading);
+        const nx = st.x + fx * speed * dt;
+        const nz = st.z + fz * speed * dt;
+        const cx2 = clamp(nx, minX, maxX), cz2 = clamp(nz, minZ, maxZ);
+        const hitWall = cx2 !== nx || cz2 !== nz;
+        st.x = cx2;
+        st.z = cz2;
+        st.bouncePhase += dt * BACON_MILL_BOUNCE_FREQ;
+        if (hitWall || st.walkTimer <= 0) {
+          st.pauseTimer = BACON_MILL_PAUSE_MIN + Math.random() * (BACON_MILL_PAUSE_MAX - BACON_MILL_PAUSE_MIN);
+        }
+      }
+
+      item.x = st.x;
+      item.z = st.z;
+      item.rot = st.heading;
+      if (st.pauseTimer <= 0) {
+        item.y += Math.abs(Math.sin(st.bouncePhase)) * BACON_MILL_BOUNCE_HEIGHT;
+      }
+    }
+
+    for (let i = 0; i < b.bacon.length; i++) {
+      const a = b.bacon[i];
+      if (collectedBacon.has(a.key)) continue;
+      const stA = baconMillState.get(a.key);
+      for (let j = i + 1; j < b.bacon.length; j++) {
+        const c = b.bacon[j];
+        if (collectedBacon.has(c.key)) continue;
+        const stC = baconMillState.get(c.key);
+        const dx = stC.x - stA.x, dz = stC.z - stA.z;
+        const dist = Math.hypot(dx, dz);
+        const minDist = baconClearance(a.scale) + baconClearance(c.scale);
+        if (dist > 0.0001 && dist < minDist) {
+          const push = (minDist - dist) / 2;
+          const ux = dx / dist, uz = dz / dist;
+          stA.x = clamp(stA.x - ux * push, stA.minX, stA.maxX);
+          stA.z = clamp(stA.z - uz * push, stA.minZ, stA.maxZ);
+          stC.x = clamp(stC.x + ux * push, stC.minX, stC.maxX);
+          stC.z = clamp(stC.z + uz * push, stC.minZ, stC.maxZ);
+          a.x = stA.x; a.z = stA.z;
+          c.x = stC.x; c.z = stC.z;
+        }
+      }
+    }
+  }
+
+  for (const k of Array.from(baconMillState.keys())) {
+    if (!activeKeys.has(k)) baconMillState.delete(k);
+  }
 }
 
 const treeWobbles = new Map();
@@ -1344,6 +1446,7 @@ function resetWorld(newSeed) {
   baconPopups = [];
   baconDespawns = [];
   lemurState.clear();
+  baconMillState.clear();
   birdFlockState.clear();
   goneBirdFlocks.clear();
   currentBirds = [];
@@ -1391,6 +1494,7 @@ function update(dt) {
   currentBuildings = getNearbyBuildings(player.x, player.z);
   currentTrees = getNearbyTrees(player.x, player.z);
   currentRocks = getNearbyRocks(player.x, player.z);
+  updateBaconMilling(dt);
   refreshCurrentBacon();
   updateLemurs(dt);
   currentLemurs = getNearbyLemurs(player.x, player.z);
