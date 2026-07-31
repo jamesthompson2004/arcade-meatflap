@@ -234,6 +234,15 @@ const STAMINA_BAR_FADE_SPEED = 6;
 const STAMINA_BAR_WIDTH = 70;
 const STAMINA_BAR_HEIGHT = 10;
 const RUNNING_NOTICE_MULTIPLIER = 1.5;
+const COMPASS_RADIUS = 24;
+const COMPASS_LEFT_MARGIN = 46;
+const COMPASS_TOP_MARGIN = 40;
+const COMPASS_DIRS = [
+  { label: "N", azimuth: 0 },
+  { label: "E", azimuth: Math.PI / 2 },
+  { label: "S", azimuth: Math.PI },
+  { label: "W", azimuth: Math.PI * 1.5 },
+];
 
 const BEST_BACON_KEY = "meatflap-wander-best-bacon";
 const BEST_PANTS_KEY = "meatflap-wander-best-pants";
@@ -2153,6 +2162,44 @@ function drawStaminaBar(cam) {
   ctx.globalAlpha = 1;
 }
 
+function drawCompass() {
+  const cx = COMPASS_LEFT_MARGIN, cy = COMPASS_TOP_MARGIN, r = COMPASS_RADIUS;
+  const ringColor = "rgba(90,170,210,0.6)";
+
+  ctx.strokeStyle = ringColor;
+  ctx.lineWidth = 1.5;
+  ctx.shadowBlur = GLOW_BLUR;
+  ctx.shadowColor = ringColor;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Fixed marker at the top of the ring shows "straight ahead" — the cardinal labels
+  // rotate around it as the player turns, same convention as `celestialScreenPos`.
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - r - 8);
+  ctx.lineTo(cx - 4, cy - r - 1);
+  ctx.lineTo(cx + 4, cy - r - 1);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.font = "bold 12px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (const dir of COMPASS_DIRS) {
+    const rel = angleDiff(dir.azimuth, player.heading);
+    const x = cx + Math.sin(rel) * r;
+    const y = cy - Math.cos(rel) * r;
+    ctx.fillStyle = dir.label === "N" ? "#ff4d8d" : "#ffffff";
+    ctx.shadowBlur = 4;
+    ctx.shadowColor = "rgba(0,0,0,0.8)";
+    ctx.fillText(dir.label, x, y);
+    ctx.shadowBlur = 0;
+  }
+}
+
 function drawBaconPopups(cam) {
   for (const p of baconPopups) {
     const t = p.age / BACON_POPUP_DURATION;
@@ -2260,6 +2307,7 @@ function render() {
   drawBaconDespawns(cam);
   drawBaconPopups(cam);
   drawStaminaBar(cam);
+  drawCompass();
 }
 
 let lastTime = null;
