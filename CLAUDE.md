@@ -47,23 +47,11 @@ free to prune the oldest entries rather than let it grow forever.
 
 ---
 
-**2026-07-30, 5:53pm ET:** Hey — whoever's reading this from the home desktop or the MacBook next,
-welcome. Since this file last changed we shipped Tetris, Bacman (Nubby hunting runaway
-bacon instead of being chased by ghosts — long story, see #40), stamina for Nubby's
-sprint, and turned Snake into a growing strip of bacon. Also learned the hard way that a
-"performance fix" measured only in a headless, non-compositing browser pane can make real
-rendering *worse*, not better (#38, reverted, now aspirational) — if you ever chase that
-one again, get real DevTools profiling first. Have fun out there. 🥓
-
-**2026-07-30, 7:21pm ET:** Hi all — a different Claude here, picking this up after a big batch of
-work had already landed from wherever you all were tonight (Tetris, Bacman, stamina, the
-performance-pass-and-revert, all of it — nice work). Fixed #50: bird flocks could spawn with
-their base point (and therefore some of the flock's members) landing across a building wall,
-because `getNearbyBirdFlocksBase` was missing the same building-footprint exclusion check
-that trees and rocks already had. One-line fix, same `footRadius + 3` pattern used everywhere
-else. Confirmed the bug was real by re-running the old placement logic against 10 seeds
-(14/126 flocks violated) vs. the fixed version (0/126). Good luck out there, and have fun with
-Nubby. 🥓
+*(Pruned the two oldest entries from tonight's Tetris/Bacman/stamina/Snake batch and the #50
+bird-flock-across-walls fix — nothing in them needed to survive past this point. The
+aspirational #38 performance lesson — a headless-browser-only perf "fix" can make real
+rendering worse, get real DevTools profiling first — is still worth knowing if you go near
+that issue again, just no longer spelled out here.)*
 
 **2026-07-30, 10:26pm ET:** Same Claude as 7:21pm, still going. Since then, closed out #49
 (pants and birds can no longer be scared through walls — added a real segment-intersection
@@ -125,3 +113,33 @@ James's request (#68). If you touch any of this, the constants are all named and
 the top of `wander.js`, and there's a solid regression-test pattern already established:
 measure exact violation counts across thousands of generated samples rather than eyeballing
 it, since none of this renders in a screenshot-able way here anyway. 🥓
+
+**2026-07-31, 7:10pm ET:** A different Claude, on the Mac. Closed out a batch of small Wander
+fixes and shipped a new game. Fixes: #60/a follow-up — the Nubby-pants and lemur-pants
+collision pushes moved `pantsState.x/z` directly with no wall re-check, so a bacon-protected
+pants standing its ground in a room could get shoved straight through the wall; both push
+sites now re-run `resolveWallCollision` against the pushed position, same as pants' normal
+walk/flee movement already does. #61 — pants, bird flocks, and collected bacon no longer stay
+gone forever: replaced the plain `goneKeys`/`goneBirdFlocks`/`collectedBacon` `Set`s with a
+`RespawnSet` class (same `has`/`add`/`delete`/`clear` surface, so no call sites changed) that
+remembers the `skyTime` a key was removed at and forgets it again once a timeout elapses
+(60s/45s/75s respectively — the day/night cycle is 120s). #62 — added a canvas-drawn compass
+at the top-left (deliberately *not* top-center, which collides with the fixed-position title
+in desktop-fill mode): a fixed marker at top means "straight ahead," and N/E/S/W rotate
+around it using the same relative-bearing math `celestialScreenPos` already uses for the sun.
+
+New game: **Skibidi Translator** (`games/skibidi/`, #53 then #69). Type a sentence, content
+words get swapped for slang while function words (a stoplist of ~90 articles/pronouns/
+prepositions/auxiliary verbs) are left alone so the sentence's grammar stays legible. Each
+swap keeps the original word's suffix (-s/-ing/-ed/-er/-est/-ly) and capitalization, so tense
+and number still agree — that's the whole trick and it's in `detectForm`/`inflect`/
+`genericInflect` if you want to add more words. Started with just "skibidi" (#53), then James
+supplied a full Gen-Z slang list and #69 expanded `SLANG_WORDS` to ~30 terms plus a
+`SLANG_PHRASES` list of fixed multi-word expressions (no cap, touch grass, main character
+energy, ...) that are only ever chosen for a *plain*-form word, never inflected, so nothing
+ever becomes "no capping." Also added the matching `game:skibidi` GitHub label — if you add
+another new game, it wants one too, same convention as the other `game:*` labels. One thing
+worth knowing: the highlighter tracks which tokens got replaced *during* the substitution pass
+itself (a token array with a `replaced` flag) rather than pattern-matching the output
+afterward — the original one-word version got away with regex-detecting "skibidi*" in the
+output, but that stops working the moment the replacement pool isn't a single word anymore. 🥓
