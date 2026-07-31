@@ -755,7 +755,41 @@ function baconSegments(item) {
   return segs;
 }
 
-const goneKeys = new Set();
+// Tracks removed entities (scared-off pants, startled bird flocks, collected bacon) by
+// key -> the `skyTime` they were removed at, so `has()` can let a key respawn once its
+// timeout has elapsed rather than keeping an area permanently depopulated. `skyTime` (not
+// wall-clock time) is used so respawn timing is tied to the game clock, same clock the
+// day/night cycle runs on.
+class RespawnSet {
+  constructor(timeout) {
+    this.timeout = timeout;
+    this.removedAt = new Map();
+  }
+  has(key) {
+    const t = this.removedAt.get(key);
+    if (t === undefined) return false;
+    if (skyTime - t >= this.timeout) {
+      this.removedAt.delete(key);
+      return false;
+    }
+    return true;
+  }
+  add(key) {
+    this.removedAt.set(key, skyTime);
+  }
+  delete(key) {
+    this.removedAt.delete(key);
+  }
+  clear() {
+    this.removedAt.clear();
+  }
+}
+
+const PANTS_RESPAWN_TIMEOUT = 60;
+const BIRD_RESPAWN_TIMEOUT = 45;
+const BACON_RESPAWN_TIMEOUT = 75;
+
+const goneKeys = new RespawnSet(PANTS_RESPAWN_TIMEOUT);
 
 function getNearbyPantsBase(px, pz) {
   const list = [];
@@ -1108,7 +1142,7 @@ function pantsSegments(p) {
 }
 
 const birdFlockState = new Map();
-const goneBirdFlocks = new Set();
+const goneBirdFlocks = new RespawnSet(BIRD_RESPAWN_TIMEOUT);
 let currentBirds = [];
 
 function getNearbyBirdFlocksBase(px, pz) {
@@ -1507,7 +1541,7 @@ let bestBacon = Number(localStorage.getItem(BEST_BACON_KEY) || 0);
 let bestPantsScared = Number(localStorage.getItem(BEST_PANTS_KEY) || 0);
 let baconCollected = 0;
 let pantsScared = 0;
-const collectedBacon = new Set();
+const collectedBacon = new RespawnSet(BACON_RESPAWN_TIMEOUT);
 let currentTrees = [];
 let currentRocks = [];
 let currentBacon = [];
