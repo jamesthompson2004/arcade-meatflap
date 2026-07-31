@@ -748,7 +748,27 @@ function baconSegments(item) {
 
 const goneKeys = new Set();
 
+// TEMPORARY — testing #54 (pants appreciate bacon): pants only spawn inside a building's
+// room that has bacon in it, instead of the normal free hash-grid placement below. Revert
+// to the plain hash-grid version once done testing (ask Claude, or see git history).
 function getNearbyPantsBase(px, pz) {
+  const list = [];
+  for (const b of currentBuildings) {
+    if (!b.bacon.length) continue;
+    const key = "roomtest_" + b.key;
+    if (goneKeys.has(key)) continue;
+    const [ix, iz] = b.key.split("_").map(Number);
+    const jx = hash2(ix, iz, SEED + 445566);
+    const jz = hash2(ix, iz, SEED + 445577);
+    const hw = Math.max(0.5, b.width / 2 - 1.4), hd = Math.max(0.5, b.depth / 2 - 1.4);
+    const bx = b.cx + (jx - 0.5) * 2 * hw;
+    const bz = b.cz + (jz - 0.5) * 2 * hd;
+    list.push({ key, baseX: bx, baseZ: bz });
+  }
+  return list;
+}
+
+function getNearbyPantsBaseOriginal(px, pz) {
   const list = [];
   const cix = Math.floor(px / PANTS_CELL), ciz = Math.floor(pz / PANTS_CELL);
   for (let dz = -PANTS_RANGE; dz <= PANTS_RANGE; dz++) {
