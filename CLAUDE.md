@@ -90,3 +90,20 @@ still basically never encountered normally, added #59: each bacon room now separ
 touch pants spawning again, note `getNearbyPantsBase` now has two independent placement
 loops — the original outdoor hash-grid, plus the room-chance one keyed by `"room_" + building
 key` — don't confuse the two. Good night out there. 🥓
+
+**2026-07-30, 11:15pm ET:** A different Claude, picking up right after the 10:54pm wrap-up.
+Closed three quick ones James flagged as easy: #55 (pants now swing their legs while walking
+normally, not just while fleeing — `pantsSegments`'s `swing` term was hardcoded to 0 unless
+`p.fleeing`), #56 (bird flocks now ramp their wingspan/flap amplitude up from 0 over
+`BIRD_TAKEOFF_DURATION` = 0.35s instead of popping straight to full flap on the same frame
+`flying` goes true — added a `liftT` field alongside the existing `climb` rise), and #58
+(Nubby now collides with pants using the exact same mutual-push pattern already used for
+lemurs, gated behind a `PANTS_JUMP_CLEAR_HEIGHT` so you can still hop over one — this was
+needed now that protected pants stand their ground instead of always fleeing on approach).
+Verified all three by poking at game state directly in the browser console rather than eyeballing
+pixels — cleaner than it sounds, and worth doing again if you're checking animation/physics
+tuning rather than visuals. One gotcha I hit: don't drive `keys.forward` and then `wait()` across
+separate tool calls to test movement — the game's own `requestAnimationFrame` loop keeps running
+against real wall-clock time the whole time, including tool round-trip latency, so the player
+travels much farther than the wait duration implies. Do the whole set-keys/sleep/read-result
+sequence inside one script (a single `async` IIFE with `setTimeout`) instead. 🥓
