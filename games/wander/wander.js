@@ -458,6 +458,12 @@ function buildBuilding(ix, iz) {
   const footRadius = Math.hypot(width, depth) / 2 + 1.6;
   const padRadius = footRadius + 10;
 
+  // Water is the more fundamental terrain feature — buildings avoid lakes, not the other
+  // way around (see #65).
+  if (getNearbyLakes(cx, cz).some((l) => Math.hypot(cx - l.cx, cz - l.cz) < l.radius + footRadius + 4)) {
+    return null;
+  }
+
   const hw = width / 2, hd = depth / 2;
   const NW = { x: cx - hw, z: cz - hd };
   const NE = { x: cx + hw, z: cz - hd };
@@ -602,11 +608,7 @@ function buildLake(ix, iz) {
       }
     }
 
-    const overlapsBuilding = flat && getNearbyBuildings(cx, cz).some(
-      (b) => Math.hypot(cx - b.cx, cz - b.cz) < b.footRadius + radius + 4
-    );
-
-    if (flat && !overlapsBuilding) {
+    if (flat) {
       const river = rng() < RIVER_CHANCE ? buildRiver(cx, cz, radius, rng) : null;
       lake = { cx, cz, radius, waterY, key, river };
     }
@@ -1879,8 +1881,8 @@ function update(dt) {
   }
 
   updateTreeWobbles(dt);
-  currentBuildings = getNearbyBuildings(player.x, player.z);
   currentLakes = getNearbyLakes(player.x, player.z);
+  currentBuildings = getNearbyBuildings(player.x, player.z);
   currentTrees = getNearbyTrees(player.x, player.z);
   currentRocks = getNearbyRocks(player.x, player.z);
   updateBaconMilling(dt);
@@ -2598,8 +2600,8 @@ function loop(now) {
   if (started) {
     update(dt);
   } else {
-    currentBuildings = getNearbyBuildings(player.x, player.z);
     currentLakes = getNearbyLakes(player.x, player.z);
+    currentBuildings = getNearbyBuildings(player.x, player.z);
     currentTrees = getNearbyTrees(player.x, player.z);
     currentRocks = getNearbyRocks(player.x, player.z);
     refreshCurrentBacon();
