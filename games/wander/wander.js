@@ -68,6 +68,7 @@ const BIRD_FLOCK_DENSITY = 0.06;
 const BIRD_FLOCK_MIN_COUNT = 1;
 const BIRD_FLOCK_MAX_COUNT = 12;
 const BIRD_NOTICE_RADIUS = 6;
+const BIRD_NOTICE_PANTS_FLEEING_MULT = 1.5;
 const BIRD_FLEE_SPEED = 11;
 const BIRD_FLEE_DURATION = 2.5;
 const BIRD_RAMP_DURATION = 0.25;
@@ -1072,10 +1073,24 @@ function refreshBirdFlocks(px, pz) {
 function updateBirdFlocks(dt, noticeMultiplier = 1) {
   for (const [key, st] of birdFlockState.entries()) {
     if (!st.flying) {
-      const dist = Math.hypot(st.x - player.x, st.z - player.z);
-      if (dist < BIRD_NOTICE_RADIUS * noticeMultiplier && !wallBlocksLineOfSight(player.x, player.z, st.x, st.z)) {
+      let scareX = player.x, scareZ = player.z;
+      let noticed = Math.hypot(st.x - player.x, st.z - player.z) < BIRD_NOTICE_RADIUS * noticeMultiplier
+        && !wallBlocksLineOfSight(player.x, player.z, st.x, st.z);
+      if (!noticed) {
+        for (const p of currentPants) {
+          const mult = p.fleeing ? BIRD_NOTICE_PANTS_FLEEING_MULT : 1;
+          if (Math.hypot(st.x - p.x, st.z - p.z) < BIRD_NOTICE_RADIUS * mult
+            && !wallBlocksLineOfSight(p.x, p.z, st.x, st.z)) {
+            noticed = true;
+            scareX = p.x;
+            scareZ = p.z;
+            break;
+          }
+        }
+      }
+      if (noticed) {
         st.flying = true;
-        const awayHeading = Math.atan2(st.x - player.x, st.z - player.z);
+        const awayHeading = Math.atan2(st.x - scareX, st.z - scareZ);
         const arcSpread = (Math.random() - 0.5) * (BIRD_FLEE_ARC_DEG * Math.PI / 180);
         st.fleeHeading = awayHeading + arcSpread;
         st.fleeTimer = BIRD_FLEE_DURATION;
