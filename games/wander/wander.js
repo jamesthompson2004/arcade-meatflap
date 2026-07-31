@@ -179,6 +179,17 @@ const PANTS_PHRASES = [
   "Can't catch me!", "Squeak!", "Not today!", "Byeee!", "Tag, you're it!",
 ];
 
+const PANTS_APPRECIATION_WITNESS_RADIUS = 9;
+const PANTS_APPRECIATION_COOLDOWN = 10;
+const PANTS_APPRECIATION_CAP = 16;
+const PANTS_APPRECIATION_BIG_FONT = 22;
+const PANTS_APPRECIATION_TIERS = [
+  { max: 5, phrases: ["Ooh, bacon!", "Mmm, smells good!", "Nice bacon!", "Yummy!"] },
+  { max: 10, phrases: ["Now THAT'S bacon!", "So much bacon!", "Bacon galore!", "What a haul!"] },
+  { max: 15, phrases: ["Incredible bacon!", "Bacon jackpot!", "Unbelievable stash!", "A bacon fortune!"] },
+  { max: Infinity, phrases: ["BACOOOON!!!", "THE MOTHERLODE!!!", "BACON HEAVEN!!!"], big: true },
+];
+
 const SKY_CYCLE = 120;
 const SUN_RISE_BEARING = 0;
 const SUN_RADIUS_FRAC = 0.045;
@@ -809,6 +820,29 @@ function drawSkyBodies() {
   drawSkyBody(moon.elevation, moon.azimuth, moonRadius, MOON_COLOR);
 }
 
+function buildingContaining(x, z) {
+  for (const b of currentBuildings) {
+    const hw = b.width / 2, hd = b.depth / 2;
+    if (x >= b.cx - hw && x <= b.cx + hw && z >= b.cz - hd && z <= b.cz + hd) return b;
+  }
+  return null;
+}
+
+function roomBaconAppreciationValue(b) {
+  let total = 0;
+  for (const item of b.bacon) {
+    if (!collectedBacon.has(item.key)) total += item.scale || 1;
+  }
+  return Math.min(PANTS_APPRECIATION_CAP, total);
+}
+
+function pantsAppreciationTier(value) {
+  for (const tier of PANTS_APPRECIATION_TIERS) {
+    if (value <= tier.max) return tier;
+  }
+  return PANTS_APPRECIATION_TIERS[PANTS_APPRECIATION_TIERS.length - 1];
+}
+
 function getNearbyPants(px, pz) {
   const bases = getNearbyPantsBase(px, pz);
   const activeKeys = new Set();
@@ -820,9 +854,9 @@ function getNearbyPants(px, pz) {
       st = {
         x: base.baseX, z: base.baseZ,
         fleeing: false, facing: Math.random() * Math.PI * 2, fleeHeading: 0, legPhase: 0,
-        fleeTimer: 0, bubbleTimer: 0, bubbleText: "",
+        fleeTimer: 0, bubbleTimer: 0, bubbleText: "", bubbleFontSize: 13,
         walkTimer: PANTS_WALK_MIN + Math.random() * (PANTS_WALK_MAX - PANTS_WALK_MIN),
-        pauseTimer: 0,
+        pauseTimer: 0, appreciationCooldown: Math.random() * PANTS_APPRECIATION_COOLDOWN,
       };
       pantsState.set(base.key, st);
     }
@@ -836,6 +870,7 @@ function getNearbyPants(px, pz) {
       fleeing: st.fleeing,
       bubbleTimer: st.bubbleTimer,
       bubbleText: st.bubbleText,
+      bubbleFontSize: st.bubbleFontSize,
     });
   }
   for (const k of Array.from(pantsState.keys())) {
@@ -870,6 +905,7 @@ function updatePants(dt, noticeMultiplier = 1) {
         st.fleeTimer = PANTS_FLEE_DURATION;
         st.bubbleTimer = PANTS_BUBBLE_DURATION;
         st.bubbleText = PANTS_PHRASES[Math.floor(Math.random() * PANTS_PHRASES.length)];
+        st.bubbleFontSize = 13;
         scares++;
       } else if (st.pauseTimer > 0) {
         st.pauseTimer -= dt;
@@ -913,6 +949,22 @@ function updatePants(dt, noticeMultiplier = 1) {
         st.legPhase += dt * 6;
         if (st.walkTimer <= 0) {
           st.pauseTimer = PANTS_PAUSE_MIN + Math.random() * (PANTS_PAUSE_MAX - PANTS_PAUSE_MIN);
+        }
+      }
+      if (!noticed) {
+        st.appreciationCooldown -= dt;
+        if (st.appreciationCooldown <= 0) {
+          const room = buildingContaining(st.x, st.z);
+          const value = room ? roomBaconAppreciationValue(room) : 0;
+          if (value > 0
+            && Math.hypot(st.x - player.x, st.z - player.z) < PANTS_APPRECIATION_WITNESS_RADIUS
+            && !wallBlocksLineOfSight(player.x, player.z, st.x, st.z)) {
+            const tier = pantsAppreciationTier(value);
+            st.bubbleTimer = PANTS_BUBBLE_DURATION;
+            st.bubbleText = tier.phrases[Math.floor(Math.random() * tier.phrases.length)];
+            st.bubbleFontSize = tier.big ? PANTS_APPRECIATION_BIG_FONT : 13;
+            st.appreciationCooldown = PANTS_APPRECIATION_COOLDOWN;
+          }
         }
       }
     }
@@ -1838,28 +1890,29 @@ function drawSceneObjects(cam) {
   ctx.shadowBlur = 0;
 }
 
-function drawThoughtBubble(sx, sy, text, alpha) {
-  ctx.font = "13px system-ui, sans-serif";
-  const padX = 9, padY = 6;
+function drawThoughtBubble(sx, sy, text, alpha, fontSize = 13) {
+  const scale = fontSize / 13;
+  ctx.font = `${fontSize}px system-ui, sans-serif`;
+  const padX = 9 * scale, padY = 6 * scale;
   const metrics = ctx.measureText(text);
   const w = metrics.width + padX * 2;
-  const h = 14 + padY * 2;
-  const bx = sx - w / 2, by = sy - h - 16;
+  const h = 14 * scale + padY * 2;
+  const bx = sx - w / 2, by = sy - h - 16 * scale;
   ctx.globalAlpha = alpha;
   ctx.fillStyle = "rgba(255,255,255,0.94)";
   ctx.strokeStyle = "rgba(20,20,30,0.85)";
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  if (ctx.roundRect) ctx.roundRect(bx, by, w, h, 9);
+  if (ctx.roundRect) ctx.roundRect(bx, by, w, h, 9 * scale);
   else ctx.rect(bx, by, w, h);
   ctx.fill();
   ctx.stroke();
   ctx.beginPath();
-  ctx.arc(sx - 5, by + h + 5, 4, 0, Math.PI * 2);
+  ctx.arc(sx - 5 * scale, by + h + 5 * scale, 4 * scale, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
   ctx.beginPath();
-  ctx.arc(sx - 1, by + h + 13, 2.3, 0, Math.PI * 2);
+  ctx.arc(sx - 1 * scale, by + h + 13 * scale, 2.3 * scale, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = "rgba(20,20,30,0.92)";
@@ -1877,7 +1930,7 @@ function drawPantsBubbles(cam) {
     if (proj.z <= NEAR) continue;
     const screen = toScreen(proj);
     const alpha = Math.min(1, p.bubbleTimer / 0.35);
-    drawThoughtBubble(screen.sx, screen.sy, p.bubbleText, alpha);
+    drawThoughtBubble(screen.sx, screen.sy, p.bubbleText, alpha, p.bubbleFontSize || 13);
   }
 }
 
