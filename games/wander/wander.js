@@ -190,6 +190,12 @@ const PANTS_APPRECIATION_TIERS = [
   { max: Infinity, phrases: ["BACOOOON!!!", "THE MOTHERLODE!!!", "BACON HEAVEN!!!"], big: true },
 ];
 
+const PANTS_PROTECTION_COOLDOWN = 6;
+const PANTS_PROTECTED_PHRASES = [
+  "This bacon protects me!", "Can't scare me, bacon's got my back!", "Bacon shield, activated!",
+  "No fear, bacon's here!", "Safe as long as there's bacon!", "Bacon knows no fear!",
+];
+
 const SKY_CYCLE = 120;
 const SUN_RISE_BEARING = 0;
 const SUN_RADIUS_FRAC = 0.045;
@@ -877,6 +883,7 @@ function getNearbyPants(px, pz) {
         fleeTimer: 0, bubbleTimer: 0, bubbleText: "", bubbleFontSize: 13,
         walkTimer: PANTS_WALK_MIN + Math.random() * (PANTS_WALK_MAX - PANTS_WALK_MIN),
         pauseTimer: 0, appreciationCooldown: Math.random() * PANTS_APPRECIATION_COOLDOWN,
+        protectionCooldown: Math.random() * PANTS_PROTECTION_COOLDOWN,
       };
       pantsState.set(base.key, st);
     }
@@ -917,7 +924,12 @@ function updatePants(dt, noticeMultiplier = 1) {
           }
         }
       }
-      if (noticed) {
+      const room = buildingContaining(st.x, st.z);
+      const roomValue = room ? roomBaconAppreciationValue(room) : 0;
+      const protectedByBacon = roomValue > 0;
+      let bubbleFiredThisFrame = false;
+
+      if (noticed && !protectedByBacon) {
         st.fleeing = true;
         const awayHeading = Math.atan2(st.x - scareX, st.z - scareZ);
         const arcSpread = (Math.random() - 0.5) * (PANTS_FLEE_ARC_DEG * Math.PI / 180);
@@ -927,6 +939,17 @@ function updatePants(dt, noticeMultiplier = 1) {
         st.bubbleText = PANTS_PHRASES[Math.floor(Math.random() * PANTS_PHRASES.length)];
         st.bubbleFontSize = 13;
         scares++;
+      } else if (noticed && protectedByBacon) {
+        st.protectionCooldown -= dt;
+        if (st.protectionCooldown <= 0
+          && Math.hypot(st.x - player.x, st.z - player.z) < PANTS_APPRECIATION_WITNESS_RADIUS
+          && !wallBlocksLineOfSight(player.x, player.z, st.x, st.z)) {
+          st.bubbleTimer = PANTS_BUBBLE_DURATION;
+          st.bubbleText = PANTS_PROTECTED_PHRASES[Math.floor(Math.random() * PANTS_PROTECTED_PHRASES.length)];
+          st.bubbleFontSize = 13;
+          st.protectionCooldown = PANTS_PROTECTION_COOLDOWN;
+          bubbleFiredThisFrame = true;
+        }
       } else if (st.pauseTimer > 0) {
         st.pauseTimer -= dt;
         if (st.pauseTimer <= 0) {
@@ -971,15 +994,13 @@ function updatePants(dt, noticeMultiplier = 1) {
           st.pauseTimer = PANTS_PAUSE_MIN + Math.random() * (PANTS_PAUSE_MAX - PANTS_PAUSE_MIN);
         }
       }
-      if (!noticed) {
+      if (!(noticed && !protectedByBacon) && !bubbleFiredThisFrame) {
         st.appreciationCooldown -= dt;
         if (st.appreciationCooldown <= 0) {
-          const room = buildingContaining(st.x, st.z);
-          const value = room ? roomBaconAppreciationValue(room) : 0;
-          if (value > 0
+          if (roomValue > 0
             && Math.hypot(st.x - player.x, st.z - player.z) < PANTS_APPRECIATION_WITNESS_RADIUS
             && !wallBlocksLineOfSight(player.x, player.z, st.x, st.z)) {
-            const tier = pantsAppreciationTier(value);
+            const tier = pantsAppreciationTier(roomValue);
             st.bubbleTimer = PANTS_BUBBLE_DURATION;
             st.bubbleText = tier.phrases[Math.floor(Math.random() * tier.phrases.length)];
             st.bubbleFontSize = tier.big ? PANTS_APPRECIATION_BIG_FONT : 13;
