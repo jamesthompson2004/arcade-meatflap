@@ -1797,8 +1797,16 @@ function update(dt) {
         nz += uz * push * 0.5;
         const pst = pantsState.get(p.key);
         if (pst) {
-          pst.x -= ux * push * 0.5;
-          pst.z -= uz * push * 0.5;
+          let px2 = pst.x - ux * push * 0.5;
+          let pz2 = pst.z - uz * push * 0.5;
+          for (const b of currentBuildings) {
+            if (Math.hypot(px2 - b.cx, pz2 - b.cz) > b.footRadius + 4) continue;
+            for (const seg of b.walls) {
+              [px2, pz2] = resolveWallCollision(px2, pz2, seg, PANTS_RADIUS + 0.12);
+            }
+          }
+          pst.x = px2;
+          pst.z = pz2;
         }
       }
     }
