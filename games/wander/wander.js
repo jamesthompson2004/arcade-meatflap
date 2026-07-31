@@ -77,6 +77,7 @@ const BIRD_TURN_RAMP_DURATION = 0.2;
 const BIRD_FLEE_ARC_DEG = 120;
 const BIRD_RISE_HEIGHT = 6;
 const BIRD_RISE_DURATION = 1.2;
+const BIRD_TAKEOFF_DURATION = 0.35;
 const BIRD_BUBBLE_DURATION = 1.6;
 const BIRD_WING_SPAN = 0.9;
 const BIRD_NEAR = [225, 228, 235];
@@ -225,6 +226,7 @@ const SPRINT_MULTIPLIER = 1.6;
 const JUMP_VELOCITY = 8.2;
 const JUMP_GRAVITY = 24;
 const LEMUR_JUMP_CLEAR_HEIGHT = 0.5;
+const PANTS_JUMP_CLEAR_HEIGHT = 0.5;
 
 const STAMINA_DRAIN_RATE = 1 / 3.5;
 const STAMINA_REFILL_RATE = 1 / 5;
@@ -1064,7 +1066,7 @@ function pantsSegments(p) {
   const beltTopY = beltBottomY + PANTS_BELT_HEIGHT;
   const fx = Math.sin(p.heading), fz = Math.cos(p.heading);
   const rx = Math.cos(p.heading), rz = -Math.sin(p.heading);
-  const swing = p.fleeing ? Math.sin(p.legPhase) * 0.36 : 0;
+  const swing = Math.sin(p.legPhase) * (p.fleeing ? 0.36 : 0.16);
   const pt = (right, fwd, y) => ({
     x: p.x + rx * right + fx * fwd,
     y,
@@ -1217,7 +1219,9 @@ function updateBirdFlocks(dt, noticeMultiplier = 1) {
 function rebuildCurrentBirds() {
   currentBirds = [];
   for (const st of birdFlockState.values()) {
-    const climb = st.flying ? Math.min(1, (BIRD_FLEE_DURATION - st.fleeTimer) / BIRD_RISE_DURATION) * BIRD_RISE_HEIGHT : 0;
+    const elapsed = st.flying ? BIRD_FLEE_DURATION - st.fleeTimer : 0;
+    const climb = st.flying ? Math.min(1, elapsed / BIRD_RISE_DURATION) * BIRD_RISE_HEIGHT : 0;
+    const liftT = st.flying ? Math.min(1, elapsed / BIRD_TAKEOFF_DURATION) : 0;
     for (const b of st.birds) {
       const bx = st.x + b.offX, bz = st.z + b.offZ;
       currentBirds.push({
@@ -1228,6 +1232,7 @@ function rebuildCurrentBirds() {
         idlePhase: b.idlePhase,
         heading: st.facing,
         flying: st.flying,
+        liftT,
       });
     }
   }
@@ -1235,8 +1240,9 @@ function rebuildCurrentBirds() {
 
 function birdSegments(bird) {
   if (bird.flying) {
-    const flap = Math.sin(bird.flapPhase) * 0.4 + 0.15;
-    const span = BIRD_WING_SPAN;
+    const liftT = bird.liftT ?? 1;
+    const flap = (Math.sin(bird.flapPhase) * 0.4 + 0.15) * liftT;
+    const span = BIRD_WING_SPAN * liftT;
     const center = { x: bird.x, y: bird.y, z: bird.z };
     const left = { x: bird.x - span, y: bird.y + flap, z: bird.z };
     const right = { x: bird.x + span, y: bird.y + flap, z: bird.z };
@@ -1742,6 +1748,23 @@ function update(dt) {
         if (lst) {
           lst.x -= ux * push * 0.5;
           lst.z -= uz * push * 0.5;
+        }
+      }
+    }
+    for (const p of currentPants) {
+      if (playerAirY > PANTS_JUMP_CLEAR_HEIGHT) continue;
+      const dx = nx - p.x, dz = nz - p.z;
+      const dist = Math.hypot(dx, dz);
+      const minDist = CHAR_RADIUS + PANTS_RADIUS;
+      if (dist > 0.0001 && dist < minDist) {
+        const push = minDist - dist;
+        const ux = dx / dist, uz = dz / dist;
+        nx += ux * push * 0.5;
+        nz += uz * push * 0.5;
+        const pst = pantsState.get(p.key);
+        if (pst) {
+          pst.x -= ux * push * 0.5;
+          pst.z -= uz * push * 0.5;
         }
       }
     }
