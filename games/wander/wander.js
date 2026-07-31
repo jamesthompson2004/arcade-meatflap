@@ -153,6 +153,7 @@ const WALL_HEIGHT = 3;
 const PANTS_CELL = 13;
 const PANTS_RANGE = Math.ceil(MAX_DIST / PANTS_CELL) + 1;
 const PANTS_DENSITY = 0.09;
+const PANTS_ROOM_CHANCE = 0.15;
 const PANTS_WALK_SPEED = 2.2;
 const PANTS_WALK_MIN = 1.2;
 const PANTS_WALK_MAX = 3.2;
@@ -771,6 +772,21 @@ function getNearbyPantsBase(px, pz) {
       if (Math.hypot(bx - px, bz - pz) > MAX_DIST + PANTS_CELL) continue;
       list.push({ key, baseX: bx, baseZ: bz });
     }
+  }
+  for (const b of currentBuildings) {
+    if (!b.bacon.length) continue;
+    const key = "room_" + b.key;
+    if (goneKeys.has(key)) continue;
+    const [ix, iz] = b.key.split("_").map(Number);
+    const r = hash2(ix, iz, SEED + 778899);
+    if (r >= PANTS_ROOM_CHANCE) continue;
+    const jx = hash2(ix, iz, SEED + 778811);
+    const jz = hash2(ix, iz, SEED + 778822);
+    const hw = Math.max(0.5, b.width / 2 - 1.4), hd = Math.max(0.5, b.depth / 2 - 1.4);
+    const bx = b.cx + (jx - 0.5) * 2 * hw;
+    const bz = b.cz + (jz - 0.5) * 2 * hd;
+    if (Math.hypot(bx - px, bz - pz) > MAX_DIST + b.padRadius) continue;
+    list.push({ key, baseX: bx, baseZ: bz });
   }
   return list;
 }
