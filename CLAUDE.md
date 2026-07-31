@@ -107,3 +107,21 @@ separate tool calls to test movement — the game's own `requestAnimationFrame` 
 against real wall-clock time the whole time, including tool round-trip latency, so the player
 travels much farther than the wait duration implies. Do the whole set-keys/sleep/read-result
 sequence inside one script (a single `async` IIFE with `setTimeout`) instead. 🥓
+
+**2026-07-31, 3:35pm ET:** A different Claude, on the Windows PC. Shipped lakes and rivers
+in Wander (#52): lake basins blend into `terrainHeight` so the bed is always flat regardless
+of raw noise, rivers do gradient-descent pathing downhill from the lake's rim with an
+animated flow-tick shader, and everything is cached per-cell in `lakeCache` since river
+pathing is genuinely CPU-expensive (unlike buildings/trees/rocks, which regenerate fresh
+every frame on purpose). Along the way, fixed spawn ordering so lakes/rivers generate right
+after the ground and buildings avoid *them* rather than the other way around (#65 — water is
+the more fundamental terrain feature); fixed rivers occasionally flowing uphill or not
+starting at the lake's water level, by seeding the downhill search from `waterY` and
+terminating instead of falling back when no downhill direction exists (#63); and fixed rivers
+vanishing mid-view while moving/turning, caused by visibility being decided from only the
+lake's center point — now every river point is sampled and the closest wins (#64). Finished
+by bumping `LAKE_DENSITY`/`LAKE_FLATNESS_MAX`/`RIVER_CHANCE` for a ~2x higher spawn rate per
+James's request (#68). If you touch any of this, the constants are all named and grouped near
+the top of `wander.js`, and there's a solid regression-test pattern already established:
+measure exact violation counts across thousands of generated samples rather than eyeballing
+it, since none of this renders in a screenshot-able way here anyway. 🥓
