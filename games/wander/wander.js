@@ -848,10 +848,12 @@ function updatePants(dt, noticeMultiplier = 1) {
   for (const [key, st] of pantsState.entries()) {
     if (!st.fleeing) {
       let scareX = player.x, scareZ = player.z;
-      let noticed = Math.hypot(st.x - player.x, st.z - player.z) < PANTS_NOTICE_RADIUS * noticeMultiplier;
+      let noticed = Math.hypot(st.x - player.x, st.z - player.z) < PANTS_NOTICE_RADIUS * noticeMultiplier
+        && !wallBlocksLineOfSight(player.x, player.z, st.x, st.z);
       if (!noticed) {
         for (const l of currentLemurs) {
-          if (Math.hypot(st.x - l.x, st.z - l.z) < PANTS_NOTICE_RADIUS) {
+          if (Math.hypot(st.x - l.x, st.z - l.z) < PANTS_NOTICE_RADIUS
+            && !wallBlocksLineOfSight(l.x, l.z, st.x, st.z)) {
             noticed = true;
             scareX = l.x;
             scareZ = l.z;
@@ -1071,7 +1073,7 @@ function updateBirdFlocks(dt, noticeMultiplier = 1) {
   for (const [key, st] of birdFlockState.entries()) {
     if (!st.flying) {
       const dist = Math.hypot(st.x - player.x, st.z - player.z);
-      if (dist < BIRD_NOTICE_RADIUS * noticeMultiplier) {
+      if (dist < BIRD_NOTICE_RADIUS * noticeMultiplier && !wallBlocksLineOfSight(player.x, player.z, st.x, st.z)) {
         st.flying = true;
         const awayHeading = Math.atan2(st.x - player.x, st.z - player.z);
         const arcSpread = (Math.random() - 0.5) * (BIRD_FLEE_ARC_DEG * Math.PI / 180);
@@ -1511,6 +1513,25 @@ function resolveWallCollision(nx, nz, seg, minDist) {
     nz += (ddz / dist) * push;
   }
   return [nx, nz];
+}
+
+function segmentsIntersect(ax, az, bx, bz, cx, cz, dx, dz) {
+  const d1x = bx - ax, d1z = bz - az;
+  const d2x = dx - cx, d2z = dz - cz;
+  const denom = d1x * d2z - d1z * d2x;
+  if (Math.abs(denom) < 1e-9) return false;
+  const t = ((cx - ax) * d2z - (cz - az) * d2x) / denom;
+  const u = ((cx - ax) * d1z - (cz - az) * d1x) / denom;
+  return t > 0.001 && t < 0.999 && u > 0.001 && u < 0.999;
+}
+
+function wallBlocksLineOfSight(ax, az, bx, bz) {
+  for (const b of currentBuildings) {
+    for (const seg of b.walls) {
+      if (segmentsIntersect(ax, az, bx, bz, seg.ax, seg.az, seg.bx, seg.bz)) return true;
+    }
+  }
+  return false;
 }
 
 function update(dt) {
