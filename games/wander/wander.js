@@ -2216,10 +2216,23 @@ function drawLake(l, cam) {
 
 function drawSceneObjects(cam) {
   const items = [];
+  // Culling on the lake's center point alone made its river vanish whenever the center
+  // happened to drift just behind the near plane or past the far cutoff during ordinary
+  // movement/turning, even though the river itself (which can extend well away from the
+  // center) was still clearly on screen (#64). Check every river point too, and use
+  // whichever sampled point is actually closest for depth-sorting.
   for (const l of currentLakes) {
-    const c = project(l.cx, l.waterY, l.cz, cam);
-    if (c.z < NEAR - 3 || c.z > MAX_DIST + l.radius + 40) continue;
-    items.push({ type: "lake", dist: c.z, obj: l });
+    const samplePoints = [{ x: l.cx, y: l.waterY, z: l.cz }];
+    if (l.river) samplePoints.push(...l.river);
+    let visibleDist = null;
+    for (const p of samplePoints) {
+      const c = project(p.x, p.y, p.z, cam);
+      if (c.z > NEAR - 3 && c.z < MAX_DIST + l.radius + 40 && (visibleDist === null || c.z < visibleDist)) {
+        visibleDist = c.z;
+      }
+    }
+    if (visibleDist === null) continue;
+    items.push({ type: "lake", dist: visibleDist, obj: l });
   }
   for (const t of currentTrees) {
     const c = project(t.x, t.y, t.z, cam);
