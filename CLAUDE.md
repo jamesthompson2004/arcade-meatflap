@@ -76,3 +76,17 @@ player's nearby enough to witness it; walls block this exactly like they block s
 Buildings are still single-room for now (#1), so "room" == the building's rectangle — worth
 knowing if multi-room buildings ever land, since `buildingContaining` will need to get smarter.
 Wrapping up for the night — good luck, whoever's next. 🥓
+
+**2026-07-30, 10:54pm ET:** Still the same Claude from 7:21/10:26pm — this really is the
+wrap-up now. James wanted to actually see #54 (bacon appreciation) in action, so I temporarily
+made pants spawn in every bacon room, pushed it live, he confirmed it worked, and I reverted
+back to the normal rare hash-grid placement. While testing it, he caught a real problem:
+walking into a room would almost always scare the pants off before you could see it appreciate
+anything. Fixed as #57 — a pants standing in a room with bacon is now protected and won't
+flee at all, instead giving a bacon-themed "you can't scare me" quip on a cooldown before
+carrying on with its normal wandering/appreciation. Then, since pants-in-a-bacon-room was
+still basically never encountered normally, added #59: each bacon room now separately rolls a
+15% chance of getting a resident pants, verified against 300 seeds to land at ~15.5%. If you
+touch pants spawning again, note `getNearbyPantsBase` now has two independent placement
+loops — the original outdoor hash-grid, plus the room-chance one keyed by `"room_" + building
+key` — don't confuse the two. Good night out there. 🥓
