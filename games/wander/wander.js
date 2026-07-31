@@ -64,13 +64,13 @@ const ROCK_NEAR = [150, 150, 165];
 
 const LAKE_CELL = 80;
 const LAKE_RANGE = Math.ceil((MAX_DIST + 20) / LAKE_CELL) + 1;
-const LAKE_DENSITY = 0.14;
+const LAKE_DENSITY = 0.2;
 const LAKE_RADIUS_MIN = 6;
 const LAKE_RADIUS_MAX = 13;
-const LAKE_FLATNESS_MAX = 1.3;
+const LAKE_FLATNESS_MAX = 1.5;
 const LAKE_BASIN_DEPTH = 0.6;
 const LAKE_SHORE_BLEND = 5;
-const RIVER_CHANCE = 0.6;
+const RIVER_CHANCE = 0.75;
 const RIVER_STEP = 4;
 const RIVER_MAX_STEPS = 36;
 const RIVER_SAMPLE_DIRS = 9;
