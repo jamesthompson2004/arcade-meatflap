@@ -62,6 +62,27 @@ const ROCK_DENSITY = 0.16;
 const ROCK_RADIUS = 0.6;
 const ROCK_NEAR = [150, 150, 165];
 
+const LAKE_CELL = 80;
+const LAKE_RANGE = Math.ceil((MAX_DIST + 20) / LAKE_CELL) + 1;
+const LAKE_DENSITY = 0.14;
+const LAKE_RADIUS_MIN = 6;
+const LAKE_RADIUS_MAX = 13;
+const LAKE_FLATNESS_MAX = 1.3;
+const LAKE_BASIN_DEPTH = 0.6;
+const LAKE_SHORE_BLEND = 5;
+const RIVER_CHANCE = 0.6;
+const RIVER_STEP = 4;
+const RIVER_MAX_STEPS = 36;
+const RIVER_SAMPLE_DIRS = 9;
+const RIVER_FORWARD_ARC_DEG = 140;
+const RIVER_FLAT_STOP_STREAK = 6;
+const RIVER_HALF_WIDTH = 0.9;
+const RIVER_FLOW_SPEED = 3.2;
+const RIVER_FLOW_MARK_SPACING = 3.2;
+const RIVER_FLOW_MARK_LEN = 0.9;
+const WATER_NEAR = [70, 195, 235];
+const WATER_FLOW_COLOR = "#eaffff";
+
 const BIRD_FLOCK_CELL = 15;
 const BIRD_FLOCK_RANGE = Math.ceil(MAX_DIST / BIRD_FLOCK_CELL) + 1;
 const BIRD_FLOCK_DENSITY = 0.06;
@@ -318,6 +339,7 @@ function terrainHeightRaw(x, z) {
 }
 
 let currentBuildings = [];
+let currentLakes = [];
 
 function terrainHeight(x, z) {
   let h = terrainHeightRaw(x, z);
@@ -330,6 +352,16 @@ function terrainHeight(x, z) {
       h = lerp(h, b.padHeight, t);
     }
   }
+  for (const l of currentLakes) {
+    const dist = Math.hypot(x - l.cx, z - l.cz);
+    const bedHeight = l.waterY - LAKE_BASIN_DEPTH;
+    if (dist < l.radius) {
+      h = bedHeight;
+    } else if (dist < l.radius + LAKE_SHORE_BLEND) {
+      const t = smooth(1 - (dist - l.radius) / LAKE_SHORE_BLEND);
+      h = lerp(h, bedHeight, t);
+    }
+  }
   return h;
 }
 
@@ -337,7 +369,7 @@ const gridHeightCache = new Float64Array(GRID_N * GRID_N);
 let gridCacheGX = null, gridCacheGZ = null, gridCacheSig = "";
 
 function ensureGridHeights(baseGX, baseGZ) {
-  const sig = currentBuildings.map((b) => b.key).join("|");
+  const sig = currentBuildings.map((b) => b.key).join("|") + "||" + currentLakes.map((l) => l.key).join("|");
   if (gridCacheGX === baseGX && gridCacheGZ === baseGZ && gridCacheSig === sig) return;
   gridCacheGX = baseGX;
   gridCacheGZ = baseGZ;
@@ -495,6 +527,107 @@ function getNearbyBuildings(px, pz) {
   return list;
 }
 
+// Rivers flow downhill from a point on the lake's rim via gradient descent, sampling terrain
+// height across a forward-facing arc rather than the full circle. Considering the full circle
+// (including doubling back toward where it just came from) let the path get stuck ping-ponging
+// between two points forever whenever a small dip sat just behind it — a real bug caught by
+// checking the generated path's heights, not just that it ran without erroring. Restricting
+// each step to a forward arc makes a hairpin-turn physically impossible, so it can only curve
+// and continue, never oscillate. Stops once several consecutive steps find no further downhill
+// direction within that arc (the land has leveled out).
+function buildRiver(lakeCx, lakeCz, lakeRadius, rng) {
+  const startAngle = rng() * Math.PI * 2;
+  let x = lakeCx + Math.cos(startAngle) * lakeRadius;
+  let z = lakeCz + Math.sin(startAngle) * lakeRadius;
+  let heading = startAngle;
+  const arc = (RIVER_FORWARD_ARC_DEG * Math.PI) / 180;
+  const points = [{ x, z, y: terrainHeightRaw(x, z) }];
+  let flatStreak = 0;
+  for (let step = 0; step < RIVER_MAX_STEPS; step++) {
+    const curH = terrainHeightRaw(x, z);
+    let bestAngle = null, bestH = curH;
+    for (let i = 0; i < RIVER_SAMPLE_DIRS; i++) {
+      const offset = -arc / 2 + (i / (RIVER_SAMPLE_DIRS - 1)) * arc;
+      const a = heading + offset;
+      const nx = x + Math.cos(a) * RIVER_STEP, nz = z + Math.sin(a) * RIVER_STEP;
+      const nh = terrainHeightRaw(nx, nz);
+      if (nh < bestH) {
+        bestH = nh;
+        bestAngle = a;
+      }
+    }
+    if (bestAngle === null) {
+      flatStreak++;
+      if (flatStreak >= RIVER_FLAT_STOP_STREAK) break;
+      bestAngle = heading;
+    } else {
+      flatStreak = 0;
+    }
+    heading = bestAngle;
+    x += Math.cos(heading) * RIVER_STEP;
+    z += Math.sin(heading) * RIVER_STEP;
+    if (step > 2 && Math.hypot(x - lakeCx, z - lakeCz) < lakeRadius) break;
+    points.push({ x, z, y: terrainHeightRaw(x, z) });
+  }
+  return points.length >= 4 ? points : null;
+}
+
+// Lake/river shapes are entirely deterministic (SEED + cell coords) and never change once
+// generated, unlike buildings/trees which are cheap enough to recompute every frame — river
+// pathing is not, so each cell's result is generated once and reused for the rest of the
+// session (cleared on resetWorld / New World).
+const lakeCache = new Map();
+
+function buildLake(ix, iz) {
+  const key = ix + "_" + iz;
+  if (lakeCache.has(key)) return lakeCache.get(key);
+
+  let lake = null;
+  if (hash2(ix, iz, SEED + 991133) < LAKE_DENSITY) {
+    const rng = makeRng(ix, iz, SEED + 5005);
+    const jx = rng(), jz = rng();
+    const cx = (ix + 0.5 + (jx - 0.5) * 0.5) * LAKE_CELL;
+    const cz = (iz + 0.5 + (jz - 0.5) * 0.5) * LAKE_CELL;
+    const radius = LAKE_RADIUS_MIN + rng() * (LAKE_RADIUS_MAX - LAKE_RADIUS_MIN);
+    const waterY = terrainHeightRaw(cx, cz);
+
+    let flat = true;
+    const RING = 8;
+    for (let i = 0; i < RING; i++) {
+      const a = (i / RING) * Math.PI * 2;
+      const ex = cx + Math.cos(a) * radius, ez = cz + Math.sin(a) * radius;
+      if (Math.abs(terrainHeightRaw(ex, ez) - waterY) > LAKE_FLATNESS_MAX) {
+        flat = false;
+        break;
+      }
+    }
+
+    const overlapsBuilding = flat && getNearbyBuildings(cx, cz).some(
+      (b) => Math.hypot(cx - b.cx, cz - b.cz) < b.footRadius + radius + 4
+    );
+
+    if (flat && !overlapsBuilding) {
+      const river = rng() < RIVER_CHANCE ? buildRiver(cx, cz, radius, rng) : null;
+      lake = { cx, cz, radius, waterY, key, river };
+    }
+  }
+
+  lakeCache.set(key, lake);
+  return lake;
+}
+
+function getNearbyLakes(px, pz) {
+  const list = [];
+  const cix = Math.floor(px / LAKE_CELL), ciz = Math.floor(pz / LAKE_CELL);
+  for (let dz = -LAKE_RANGE; dz <= LAKE_RANGE; dz++) {
+    for (let dx = -LAKE_RANGE; dx <= LAKE_RANGE; dx++) {
+      const l = buildLake(cix + dx, ciz + dz);
+      if (l && Math.hypot(l.cx - px, l.cz - pz) < MAX_DIST + l.radius + 40) list.push(l);
+    }
+  }
+  return list;
+}
+
 // Bacon mill about inside their building's footprint (never through the door — that gap
 // is only for the player), bouncing gently off each other and the walls. Confinement uses
 // the building's rectangular footprint rather than `walls`, since `walls` has a door gap.
@@ -632,6 +765,7 @@ function getNearbyTrees(px, pz) {
       const tz = (iz + 0.5 + (jz - 0.5) * 0.7) * TREE_CELL;
       if (Math.hypot(tx - px, tz - pz) > MAX_DIST + TREE_CELL) continue;
       if (currentBuildings.some((b) => Math.hypot(tx - b.cx, tz - b.cz) < b.footRadius + 3)) continue;
+      if (currentLakes.some((l) => Math.hypot(tx - l.cx, tz - l.cz) < l.radius + 2)) continue;
       const h0 = terrainHeight(tx, tz);
       const h1 = terrainHeight(tx + 1, tz);
       const h2 = terrainHeight(tx, tz + 1);
@@ -683,6 +817,7 @@ function getNearbyRocks(px, pz) {
       const rz = (iz + 0.5 + (jz - 0.5) * 0.7) * ROCK_CELL;
       if (Math.hypot(rx - px, rz - pz) > MAX_DIST + ROCK_CELL) continue;
       if (currentBuildings.some((b) => Math.hypot(rx - b.cx, rz - b.cz) < b.footRadius + 3)) continue;
+      if (currentLakes.some((l) => Math.hypot(rx - l.cx, rz - l.cz) < l.radius + 2)) continue;
       const scale = 0.7 + hash2(ix, iz, SEED + 883344) * 0.8;
       const rot = hash2(ix, iz, SEED + 883355) * Math.PI * 2;
       const jitterBase = [], jitterTop = [];
@@ -1657,6 +1792,9 @@ function resetWorld(newSeed) {
   stamina = 1;
   staminaExhausted = false;
   staminaBarOpacity = 0;
+  lakeCache.clear();
+  currentLakes = [];
+  gridCacheGX = null;
   updateHud();
 }
 
@@ -1742,6 +1880,7 @@ function update(dt) {
 
   updateTreeWobbles(dt);
   currentBuildings = getNearbyBuildings(player.x, player.z);
+  currentLakes = getNearbyLakes(player.x, player.z);
   currentTrees = getNearbyTrees(player.x, player.z);
   currentRocks = getNearbyRocks(player.x, player.z);
   updateBaconMilling(dt);
@@ -1831,6 +1970,16 @@ function update(dt) {
       if (Math.hypot(nx - b.cx, nz - b.cz) > b.footRadius + 4) continue;
       for (const seg of b.walls) {
         [nx, nz] = resolveWallCollision(nx, nz, seg, CHAR_RADIUS + 0.12);
+      }
+    }
+    for (const l of currentLakes) {
+      const dx = nx - l.cx, dz = nz - l.cz;
+      const dist = Math.hypot(dx, dz);
+      const minDist = CHAR_RADIUS + l.radius;
+      if (dist > 0.0001 && dist < minDist) {
+        const push = minDist - dist;
+        nx += (dx / dist) * push;
+        nz += (dz / dist) * push;
       }
     }
     player.x = nx;
@@ -1945,8 +2094,135 @@ function drawWallItem(it, cam) {
   ctx.stroke();
 }
 
+function riverArcLengths(river) {
+  const lens = [0];
+  for (let i = 1; i < river.length; i++) {
+    lens.push(lens[i - 1] + Math.hypot(river[i].x - river[i - 1].x, river[i].z - river[i - 1].z));
+  }
+  return lens;
+}
+
+function pointAtArcLength(river, lens, target) {
+  const total = lens[lens.length - 1];
+  if (target <= 0) return river[0];
+  if (target >= total) return river[river.length - 1];
+  for (let i = 1; i < lens.length; i++) {
+    if (lens[i] >= target) {
+      const segLen = lens[i] - lens[i - 1];
+      const t = segLen > 0 ? (target - lens[i - 1]) / segLen : 0;
+      const a = river[i - 1], b = river[i];
+      return { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t), z: lerp(a.z, b.z, t) };
+    }
+  }
+  return river[river.length - 1];
+}
+
+function riverBankPoints(river) {
+  const left = [], right = [];
+  for (let i = 0; i < river.length; i++) {
+    const p = river[i];
+    const prev = river[Math.max(0, i - 1)];
+    const next = river[Math.min(river.length - 1, i + 1)];
+    const dx = next.x - prev.x, dz = next.z - prev.z;
+    const len = Math.hypot(dx, dz) || 1;
+    const nx = -dz / len, nz = dx / len;
+    left.push({ x: p.x + nx * RIVER_HALF_WIDTH, y: p.y, z: p.z + nz * RIVER_HALF_WIDTH });
+    right.push({ x: p.x - nx * RIVER_HALF_WIDTH, y: p.y, z: p.z - nz * RIVER_HALF_WIDTH });
+  }
+  return { left, right };
+}
+
+// Rivers are rendered as a filled ribbon (per segment, so near-plane clipping stays correct)
+// plus glowing bank edges and a handful of short flow ticks that march from the lake outward
+// over time — `pos` increases with skyTime and river points are ordered lake-edge-first, so
+// the ticks always travel away from the lake, matching how rivers actually flow.
+function drawRiver(river, cam, dist) {
+  const lens = riverArcLengths(river);
+  const total = lens[lens.length - 1];
+  const { left, right } = riverBankPoints(river);
+  const t = Math.min(1, Math.max(0, dist / MAX_DIST));
+
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = `rgba(${WATER_NEAR[0]},${WATER_NEAR[1]},${WATER_NEAR[2]},${lerp(0.35, 0, t).toFixed(3)})`;
+  for (let i = 0; i < river.length - 1; i++) {
+    const a = project(left[i].x, left[i].y, left[i].z, cam);
+    const b = project(left[i + 1].x, left[i + 1].y, left[i + 1].z, cam);
+    const c = project(right[i + 1].x, right[i + 1].y, right[i + 1].z, cam);
+    const d = project(right[i].x, right[i].y, right[i].z, cam);
+    const poly = clipPolygonNear([a, b, c, d]);
+    if (poly.length < 3) continue;
+    const screenPts = poly.map(toScreen);
+    ctx.beginPath();
+    ctx.moveTo(screenPts[0].sx, screenPts[0].sy);
+    for (let j = 1; j < screenPts.length; j++) ctx.lineTo(screenPts[j].sx, screenPts[j].sy);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  const bankSegs = [];
+  for (let i = 0; i < river.length - 1; i++) {
+    bankSegs.push([left[i], left[i + 1]]);
+    bankSegs.push([right[i], right[i + 1]]);
+  }
+  strokeWireItem(bankSegs, cam, itemColor(WATER_NEAR, dist), 1, GLOW_BLUR);
+
+  const flowSegs = [];
+  const phase = (skyTime * RIVER_FLOW_SPEED) % RIVER_FLOW_MARK_SPACING;
+  const markCount = Math.floor(total / RIVER_FLOW_MARK_SPACING);
+  for (let k = 0; k <= markCount; k++) {
+    const pos = k * RIVER_FLOW_MARK_SPACING + phase;
+    if (pos > total) continue;
+    const pt = pointAtArcLength(river, lens, pos);
+    const pt2 = pointAtArcLength(river, lens, Math.min(total, pos + 0.5));
+    const ddx = pt2.x - pt.x, ddz = pt2.z - pt.z;
+    const len = Math.hypot(ddx, ddz) || 1;
+    const tx = ddx / len, tz = ddz / len;
+    const half = RIVER_FLOW_MARK_LEN / 2;
+    flowSegs.push([
+      { x: pt.x - tx * half, y: pt.y + 0.02, z: pt.z - tz * half },
+      { x: pt.x + tx * half, y: pt.y + 0.02, z: pt.z + tz * half },
+    ]);
+  }
+  strokeWireItem(flowSegs, cam, WATER_FLOW_COLOR, 2, GLOW_BLUR * 1.3);
+}
+
+function drawLake(l, cam) {
+  const N = 24;
+  const ring = [];
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2;
+    ring.push({ x: l.cx + Math.cos(a) * l.radius, y: l.waterY, z: l.cz + Math.sin(a) * l.radius });
+  }
+  const projPts = ring.map((p) => project(p.x, p.y, p.z, cam));
+  const poly = clipPolygonNear(projPts);
+  if (poly.length < 3) return;
+  const screenPts = poly.map(toScreen);
+  const centerProj = project(l.cx, l.waterY, l.cz, cam);
+  const t = Math.min(1, Math.max(0, centerProj.z / MAX_DIST));
+
+  ctx.shadowBlur = 0;
+  ctx.beginPath();
+  ctx.moveTo(screenPts[0].sx, screenPts[0].sy);
+  for (let i = 1; i < screenPts.length; i++) ctx.lineTo(screenPts[i].sx, screenPts[i].sy);
+  ctx.closePath();
+  ctx.fillStyle = `rgba(${WATER_NEAR[0]},${WATER_NEAR[1]},${WATER_NEAR[2]},${lerp(0.4, 0, t).toFixed(3)})`;
+  ctx.fill();
+
+  const rimSegs = [];
+  for (let i = 0; i < N; i++) rimSegs.push([ring[i], ring[(i + 1) % N]]);
+  const shimmer = 0.75 + Math.sin(skyTime * 0.6 + l.cx) * 0.25;
+  strokeWireItem(rimSegs, cam, itemColor(WATER_NEAR, centerProj.z), 1.4, GLOW_BLUR * shimmer);
+
+  if (l.river) drawRiver(l.river, cam, centerProj.z);
+}
+
 function drawSceneObjects(cam) {
   const items = [];
+  for (const l of currentLakes) {
+    const c = project(l.cx, l.waterY, l.cz, cam);
+    if (c.z < NEAR - 3 || c.z > MAX_DIST + l.radius + 40) continue;
+    items.push({ type: "lake", dist: c.z, obj: l });
+  }
   for (const t of currentTrees) {
     const c = project(t.x, t.y, t.z, cam);
     if (c.z < NEAR - 3 || c.z > MAX_DIST + 5) continue;
@@ -2002,6 +2278,8 @@ function drawSceneObjects(cam) {
       strokeWireItem(lemurSegments(it.obj), cam, itemColor(LEMUR_NEAR, it.dist), 1.4, GLOW_BLUR);
     } else if (it.type === "bird") {
       strokeWireItem(birdSegments(it.obj), cam, itemColor(BIRD_NEAR, it.dist), 1.2, GLOW_BLUR);
+    } else if (it.type === "lake") {
+      drawLake(it.obj, cam);
     } else {
       drawWallItem(it, cam);
     }
@@ -2321,6 +2599,7 @@ function loop(now) {
     update(dt);
   } else {
     currentBuildings = getNearbyBuildings(player.x, player.z);
+    currentLakes = getNearbyLakes(player.x, player.z);
     currentTrees = getNearbyTrees(player.x, player.z);
     currentRocks = getNearbyRocks(player.x, player.z);
     refreshCurrentBacon();
