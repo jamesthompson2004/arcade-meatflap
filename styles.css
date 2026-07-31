@@ -158,6 +158,15 @@ body {
   font-size: 2.5rem;
 }
 
+.skibidi-thumb {
+  background: linear-gradient(135deg, #1a3a2e, #241a3a 85%);
+}
+
+.skibidi-thumb::after {
+  content: "🚽";
+  font-size: 2.5rem;
+}
+
 .soon-thumb {
   background: #1b1f2a;
   color: var(--muted);

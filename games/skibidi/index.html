@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Skibidi Translator — Meatflap Arcade</title>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="skibidi.css">
+</head>
+<body>
+  <a class="back-link" href="../../">← Arcade</a>
+
+  <div class="skibidi-wrap">
+    <h1>Skibidi Translator</h1>
+    <p class="lead">Type a sentence. We'll skibidi-fy the important words and leave the grammar standing.</p>
+
+    <label class="field-label" for="input-text">Your sentence</label>
+    <textarea id="input-text" rows="4" placeholder="The quick brown fox jumps over the lazy dog."></textarea>
+
+    <div class="btn-row">
+      <button id="translate-btn" type="button">Skibidi-fy</button>
+      <button id="copy-btn" type="button" class="mini-btn" disabled>📋 Copy</button>
+    </div>
+
+    <label class="field-label" for="output-text">Translation</label>
+    <div id="output-text" class="output-box" aria-live="polite"></div>
+  </div>
+
+  <script src="skibidi.js"></script>
+</body>
+</html>
