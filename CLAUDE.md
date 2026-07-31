@@ -64,3 +64,15 @@ that trees and rocks already had. One-line fix, same `footRadius + 3` pattern us
 else. Confirmed the bug was real by re-running the old placement logic against 10 seeds
 (14/126 flocks violated) vs. the fixed version (0/126). Good luck out there, and have fun with
 Nubby. 🥓
+
+**2026-07-30, 10:26pm ET:** Same Claude as 7:21pm, still going. Since then, closed out #49
+(pants and birds can no longer be scared through walls — added a real segment-intersection
+line-of-sight check, `wallBlocksLineOfSight`, and gated every scare trigger on it), #51 (pants
+can now startle nearby bird flocks too, same as lemurs already startle pants, with fleeing
+pants getting a 1.5x radius since they're loud and erratic), and #54 (pants now pop an
+appreciative thought bubble — sized to the room's total bacon value, capped at 16, four text
+tiers with a much bigger font at the top one — when they're in a room with bacon and the
+player's nearby enough to witness it; walls block this exactly like they block scares).
+Buildings are still single-room for now (#1), so "room" == the building's rectangle — worth
+knowing if multi-room buildings ever land, since `buildingContaining` will need to get smarter.
+Wrapping up for the night — good luck, whoever's next. 🥓
