@@ -75,7 +75,6 @@ const RIVER_STEP = 4;
 const RIVER_MAX_STEPS = 36;
 const RIVER_SAMPLE_DIRS = 9;
 const RIVER_FORWARD_ARC_DEG = 140;
-const RIVER_FLAT_STOP_STREAK = 6;
 const RIVER_HALF_WIDTH = 0.9;
 const RIVER_FLOW_SPEED = 3.2;
 const RIVER_FLOW_MARK_SPACING = 3.2;
@@ -533,24 +532,26 @@ function getNearbyBuildings(px, pz) {
   return list;
 }
 
-// Rivers flow downhill from a point on the lake's rim via gradient descent, sampling terrain
-// height across a forward-facing arc rather than the full circle. Considering the full circle
-// (including doubling back toward where it just came from) let the path get stuck ping-ponging
-// between two points forever whenever a small dip sat just behind it — a real bug caught by
-// checking the generated path's heights, not just that it ran without erroring. Restricting
-// each step to a forward arc makes a hairpin-turn physically impossible, so it can only curve
-// and continue, never oscillate. Stops once several consecutive steps find no further downhill
-// direction within that arc (the land has leveled out).
-function buildRiver(lakeCx, lakeCz, lakeRadius, rng) {
+// Rivers flow downhill from the lake's rim, at the lake's own water level, via gradient
+// descent sampling terrain height across a forward-facing arc rather than the full circle.
+// Considering the full circle (including doubling back toward where it just came from) let
+// the path get stuck ping-ponging between two points forever whenever a small dip sat just
+// behind it — a real bug caught by checking the generated path's heights, not just that it
+// ran without erroring. Restricting each step to a forward arc makes a hairpin-turn
+// physically impossible, so it can only curve and continue, never oscillate. Every accepted
+// step must be strictly lower than the one before it (seeded from the lake's waterY, so the
+// very first step is also guaranteed downhill from the lake itself) — if no direction in the
+// arc is downhill, that's the river's natural end, full stop, rather than pushing forward
+// anyway and occasionally climbing (the previous bug behind #63).
+function buildRiver(lakeCx, lakeCz, lakeRadius, waterY, rng) {
   const startAngle = rng() * Math.PI * 2;
   let x = lakeCx + Math.cos(startAngle) * lakeRadius;
   let z = lakeCz + Math.sin(startAngle) * lakeRadius;
   let heading = startAngle;
+  let curH = waterY;
   const arc = (RIVER_FORWARD_ARC_DEG * Math.PI) / 180;
-  const points = [{ x, z, y: terrainHeightRaw(x, z) }];
-  let flatStreak = 0;
+  const points = [{ x, z, y: waterY }];
   for (let step = 0; step < RIVER_MAX_STEPS; step++) {
-    const curH = terrainHeightRaw(x, z);
     let bestAngle = null, bestH = curH;
     for (let i = 0; i < RIVER_SAMPLE_DIRS; i++) {
       const offset = -arc / 2 + (i / (RIVER_SAMPLE_DIRS - 1)) * arc;
@@ -562,18 +563,13 @@ function buildRiver(lakeCx, lakeCz, lakeRadius, rng) {
         bestAngle = a;
       }
     }
-    if (bestAngle === null) {
-      flatStreak++;
-      if (flatStreak >= RIVER_FLAT_STOP_STREAK) break;
-      bestAngle = heading;
-    } else {
-      flatStreak = 0;
-    }
+    if (bestAngle === null) break;
     heading = bestAngle;
     x += Math.cos(heading) * RIVER_STEP;
     z += Math.sin(heading) * RIVER_STEP;
+    curH = bestH;
     if (step > 2 && Math.hypot(x - lakeCx, z - lakeCz) < lakeRadius) break;
-    points.push({ x, z, y: terrainHeightRaw(x, z) });
+    points.push({ x, z, y: curH });
   }
   return points.length >= 4 ? points : null;
 }
@@ -609,7 +605,7 @@ function buildLake(ix, iz) {
     }
 
     if (flat) {
-      const river = rng() < RIVER_CHANCE ? buildRiver(cx, cz, radius, rng) : null;
+      const river = rng() < RIVER_CHANCE ? buildRiver(cx, cz, radius, waterY, rng) : null;
       lake = { cx, cz, radius, waterY, key, river };
     }
   }
