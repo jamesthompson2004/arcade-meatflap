@@ -82,6 +82,32 @@ const RIVER_FLOW_MARK_LEN = 0.9;
 const WATER_NEAR = [70, 195, 235];
 const WATER_FLOW_COLOR = "#eaffff";
 
+// Fish stay invisible under the water and only appear for the duration of one of two
+// events per lake: a school breaching (1-6 fish, each on its own staggered arc so the
+// school doesn't jump in lockstep) or — rarer — a single fish flopping out onto the shore,
+// flailing around for a bit, then flopping back in (#66).
+const FISH_EVENT_MIN_INTERVAL = 7;
+const FISH_EVENT_MAX_INTERVAL = 16;
+const FISH_FLOP_EVENT_CHANCE = 0.22;
+const FISH_SCHOOL_MIN = 1;
+const FISH_SCHOOL_MAX = 6;
+const FISH_JUMP_ARC_DURATION = 0.7;
+const FISH_JUMP_STAGGER = 0.35;
+const FISH_JUMP_HEIGHT = 1.1;
+const FISH_FLOP_OUT_DURATION = 0.45;
+const FISH_FLOP_HOLD_DURATION = 1.6;
+const FISH_FLOP_BACK_DURATION = 0.45;
+const FISH_FLOP_HOP_HEIGHT = 0.5;
+const FISH_FLOP_BOUNCE_HEIGHT = 0.12;
+const FISH_FLOP_ROLL_AMOUNT = 0.9;
+const FISH_NEAR = [225, 235, 240];
+const FISH_LEN = 0.55;
+const FISH_WIDTH = 0.16;
+const FISH_HEIGHT = 0.22;
+const FISH_TAIL_LEN = 0.22;
+const FISH_TAIL_HEIGHT = 0.16;
+const FISH_TAIL_SWING = 0.16;
+
 const BIRD_FLOCK_CELL = 15;
 const BIRD_FLOCK_RANGE = Math.ceil(MAX_DIST / BIRD_FLOCK_CELL) + 1;
 const BIRD_FLOCK_DENSITY = 0.06;
@@ -339,6 +365,7 @@ function terrainHeightRaw(x, z) {
 
 let currentBuildings = [];
 let currentLakes = [];
+let currentFish = [];
 
 function terrainHeight(x, z) {
   let h = terrainHeightRaw(x, z);
@@ -624,6 +651,160 @@ function getNearbyLakes(px, pz) {
     }
   }
   return list;
+}
+
+// Per-lake fish event timer/state, keyed by the lake's own cache key. Only lakes currently
+// in `currentLakes` get their timer advanced — same "only ticks while relevant" convention
+// bird flocks and pants already use — so nothing depends on wall-clock time passing while
+// a lake is out of range.
+const fishState = new Map();
+
+function createFishJumpEvent(l) {
+  const count = FISH_SCHOOL_MIN + Math.floor(Math.random() * (FISH_SCHOOL_MAX - FISH_SCHOOL_MIN + 1));
+  const fish = [];
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const d = Math.random() * l.radius * 0.75;
+    fish.push({
+      cx: l.cx + Math.cos(a) * d,
+      cz: l.cz + Math.sin(a) * d,
+      heading: Math.random() * Math.PI * 2,
+      startOffset: Math.random() * FISH_JUMP_STAGGER,
+      tailSeed: Math.random() * Math.PI * 2,
+    });
+  }
+  return { type: "jump", elapsed: 0, duration: FISH_JUMP_ARC_DURATION + FISH_JUMP_STAGGER, waterY: l.waterY, fish };
+}
+
+function createFishFlopEvent(l) {
+  const angle = Math.random() * Math.PI * 2;
+  const waterX = l.cx + Math.cos(angle) * (l.radius - 0.3);
+  const waterZ = l.cz + Math.sin(angle) * (l.radius - 0.3);
+  const shoreX = l.cx + Math.cos(angle) * (l.radius + 0.6);
+  const shoreZ = l.cz + Math.sin(angle) * (l.radius + 0.6);
+  return {
+    type: "flop",
+    elapsed: 0,
+    duration: FISH_FLOP_OUT_DURATION + FISH_FLOP_HOLD_DURATION + FISH_FLOP_BACK_DURATION,
+    waterX, waterZ, waterY: l.waterY,
+    shoreX, shoreZ, shoreY: terrainHeight(shoreX, shoreZ),
+    outHeading: angle + Math.PI,
+    tailSeed: Math.random() * Math.PI * 2,
+  };
+}
+
+function scheduleNextFishEvent() {
+  return FISH_EVENT_MIN_INTERVAL + Math.random() * (FISH_EVENT_MAX_INTERVAL - FISH_EVENT_MIN_INTERVAL);
+}
+
+function updateFish(dt) {
+  const activeKeys = new Set();
+  for (const l of currentLakes) {
+    activeKeys.add(l.key);
+    let st = fishState.get(l.key);
+    if (!st) {
+      st = { timer: scheduleNextFishEvent(), event: null };
+      fishState.set(l.key, st);
+    }
+    if (st.event) {
+      st.event.elapsed += dt;
+      if (st.event.elapsed >= st.event.duration) st.event = null;
+    } else {
+      st.timer -= dt;
+      if (st.timer <= 0) {
+        st.timer = scheduleNextFishEvent();
+        st.event = Math.random() < FISH_FLOP_EVENT_CHANCE ? createFishFlopEvent(l) : createFishJumpEvent(l);
+      }
+    }
+  }
+  for (const k of Array.from(fishState.keys())) {
+    if (!activeKeys.has(k)) fishState.delete(k);
+  }
+  rebuildCurrentFish();
+}
+
+function rebuildCurrentFish() {
+  currentFish = [];
+  for (const st of fishState.values()) {
+    const ev = st.event;
+    if (!ev) continue;
+    if (ev.type === "jump") {
+      for (const f of ev.fish) {
+        const local = ev.elapsed - f.startOffset;
+        if (local < 0 || local > FISH_JUMP_ARC_DURATION) continue;
+        const t = local / FISH_JUMP_ARC_DURATION;
+        const arc = Math.sin(t * Math.PI);
+        currentFish.push({
+          x: f.cx, z: f.cz,
+          y: ev.waterY + arc * FISH_JUMP_HEIGHT,
+          heading: f.heading,
+          roll: Math.sin(t * Math.PI * 2) * 0.3,
+          tailPhase: f.tailSeed + t * Math.PI * 6,
+        });
+      }
+    } else {
+      const outEnd = FISH_FLOP_OUT_DURATION;
+      const holdEnd = outEnd + FISH_FLOP_HOLD_DURATION;
+      let x, z, y, heading, roll;
+      const flopPhase = ev.elapsed * 10 + ev.tailSeed;
+      if (ev.elapsed < outEnd) {
+        const t = ev.elapsed / FISH_FLOP_OUT_DURATION;
+        x = lerp(ev.waterX, ev.shoreX, t);
+        z = lerp(ev.waterZ, ev.shoreZ, t);
+        y = lerp(ev.waterY, ev.shoreY, t) + Math.sin(t * Math.PI) * FISH_FLOP_HOP_HEIGHT;
+        heading = ev.outHeading;
+        roll = 0;
+      } else if (ev.elapsed < holdEnd) {
+        x = ev.shoreX; z = ev.shoreZ;
+        y = ev.shoreY + Math.abs(Math.sin(flopPhase)) * FISH_FLOP_BOUNCE_HEIGHT;
+        heading = ev.outHeading + Math.sin(flopPhase * 0.7) * 0.6;
+        roll = Math.sin(flopPhase) * FISH_FLOP_ROLL_AMOUNT;
+      } else {
+        const t = (ev.elapsed - holdEnd) / FISH_FLOP_BACK_DURATION;
+        x = lerp(ev.shoreX, ev.waterX, t);
+        z = lerp(ev.shoreZ, ev.waterZ, t);
+        y = lerp(ev.shoreY, ev.waterY, t) + Math.sin(t * Math.PI) * FISH_FLOP_HOP_HEIGHT;
+        heading = ev.outHeading + Math.PI;
+        roll = 0;
+      }
+      currentFish.push({ x, z, y, heading, roll, tailPhase: flopPhase });
+    }
+  }
+}
+
+function fishSegments(f) {
+  const fx = Math.sin(f.heading), fz = Math.cos(f.heading);
+  const rx = Math.cos(f.heading), rz = -Math.sin(f.heading);
+  const roll = f.roll || 0;
+  const cosR = Math.cos(roll), sinR = Math.sin(roll);
+  // Rolled "up"/"right" cross-section basis, used for the shore-flop's side-to-side
+  // flailing (roll stays 0 during the mid-air jump arc's forward-facing dive).
+  const upX = rx * sinR, upY = cosR, upZ = rz * sinR;
+  const rightX = rx * cosR, rightY = -sinR, rightZ = rz * cosR;
+  const baseY = f.y;
+
+  const pt = (fwd, right, up) => ({
+    x: f.x + fx * fwd + rightX * right + upX * up,
+    y: baseY + rightY * right + upY * up,
+    z: f.z + fz * fwd + rightZ * right + upZ * up,
+  });
+
+  const nose = pt(FISH_LEN * 0.55, 0, 0);
+  const top = pt(FISH_LEN * 0.05, 0, FISH_HEIGHT);
+  const bottom = pt(FISH_LEN * 0.05, 0, -FISH_HEIGHT);
+  const left = pt(-FISH_LEN * 0.1, FISH_WIDTH, 0);
+  const right = pt(-FISH_LEN * 0.1, -FISH_WIDTH, 0);
+  const tailBase = pt(-FISH_LEN * 0.35, 0, 0);
+  const tailWag = Math.sin(f.tailPhase) * FISH_TAIL_SWING;
+  const tailTipTop = pt(-FISH_LEN * 0.35 - FISH_TAIL_LEN, tailWag, FISH_TAIL_HEIGHT);
+  const tailTipBottom = pt(-FISH_LEN * 0.35 - FISH_TAIL_LEN, tailWag, -FISH_TAIL_HEIGHT);
+
+  return [
+    [nose, top], [nose, bottom], [nose, left], [nose, right],
+    [top, left], [top, right], [bottom, left], [bottom, right],
+    [left, tailBase], [right, tailBase],
+    [tailBase, tailTipTop], [tailBase, tailTipBottom], [tailTipTop, tailTipBottom],
+  ];
 }
 
 // Bacon mill about inside their building's footprint (never through the door — that gap
@@ -1792,6 +1973,8 @@ function resetWorld(newSeed) {
   staminaBarOpacity = 0;
   lakeCache.clear();
   currentLakes = [];
+  fishState.clear();
+  currentFish = [];
   gridCacheGX = null;
   updateHud();
 }
@@ -1878,6 +2061,7 @@ function update(dt) {
 
   updateTreeWobbles(dt);
   currentLakes = getNearbyLakes(player.x, player.z);
+  updateFish(dt);
   currentBuildings = getNearbyBuildings(player.x, player.z);
   currentTrees = getNearbyTrees(player.x, player.z);
   currentRocks = getNearbyRocks(player.x, player.z);
@@ -2264,6 +2448,11 @@ function drawSceneObjects(cam) {
     if (c.z < NEAR - 3 || c.z > MAX_DIST + 5) continue;
     items.push({ type: "bird", dist: c.z, obj: bird });
   }
+  for (const fish of currentFish) {
+    const c = project(fish.x, fish.y, fish.z, cam);
+    if (c.z < NEAR - 3 || c.z > MAX_DIST + 5) continue;
+    items.push({ type: "fish", dist: c.z, obj: fish });
+  }
   for (const b of currentBuildings) {
     for (const seg of b.walls) {
       const midx = (seg.ax + seg.bx) / 2, midz = (seg.az + seg.bz) / 2;
@@ -2289,6 +2478,8 @@ function drawSceneObjects(cam) {
       strokeWireItem(lemurSegments(it.obj), cam, itemColor(LEMUR_NEAR, it.dist), 1.4, GLOW_BLUR);
     } else if (it.type === "bird") {
       strokeWireItem(birdSegments(it.obj), cam, itemColor(BIRD_NEAR, it.dist), 1.2, GLOW_BLUR);
+    } else if (it.type === "fish") {
+      strokeWireItem(fishSegments(it.obj), cam, itemColor(FISH_NEAR, it.dist), 1.2, GLOW_BLUR);
     } else if (it.type === "lake") {
       drawLake(it.obj, cam);
     } else {
@@ -2618,6 +2809,7 @@ function loop(now) {
     currentLemurs = getNearbyLemurs(player.x, player.z);
     refreshBirdFlocks(player.x, player.z);
     rebuildCurrentBirds();
+    rebuildCurrentFish();
   }
   render();
   requestAnimationFrame(loop);
