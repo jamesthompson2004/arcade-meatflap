@@ -48,7 +48,6 @@ const HEIGHT_SCALE = 15;
 
 const TREE_CELL = 9;
 const TREE_RANGE = Math.ceil(MAX_DIST / TREE_CELL) + 1;
-const TREE_DENSITY = 0.16;
 const TREE_RADIUS = 0.55;
 const TREE_WOBBLE_K = 90;
 const TREE_WOBBLE_C = 9;
@@ -58,19 +57,16 @@ const TREE_WOBBLE_MAX_OFFSET = 0.6;
 
 const ROCK_CELL = 9;
 const ROCK_RANGE = Math.ceil(MAX_DIST / ROCK_CELL) + 1;
-const ROCK_DENSITY = 0.16;
 const ROCK_RADIUS = 0.6;
 const ROCK_NEAR = [150, 150, 165];
 
 const LAKE_CELL = 80;
 const LAKE_RANGE = Math.ceil((MAX_DIST + 20) / LAKE_CELL) + 1;
-const LAKE_DENSITY = 0.2;
 const LAKE_RADIUS_MIN = 6;
 const LAKE_RADIUS_MAX = 13;
 const LAKE_FLATNESS_MAX = 1.5;
 const LAKE_BASIN_DEPTH = 0.6;
 const LAKE_SHORE_BLEND = 5;
-const RIVER_CHANCE = 0.75;
 const RIVER_STEP = 4;
 const RIVER_MAX_STEPS = 36;
 const RIVER_SAMPLE_DIRS = 9;
@@ -86,11 +82,7 @@ const WATER_FLOW_COLOR = "#eaffff";
 // events per lake: a school breaching (1-6 fish, each on its own staggered arc so the
 // school doesn't jump in lockstep) or — rarer — a single fish flopping out onto the shore,
 // flailing around for a bit, then flopping back in (#66).
-const FISH_EVENT_MIN_INTERVAL = 7;
-const FISH_EVENT_MAX_INTERVAL = 16;
 const FISH_FLOP_EVENT_CHANCE = 0.22;
-const FISH_SCHOOL_MIN = 1;
-const FISH_SCHOOL_MAX = 6;
 const FISH_JUMP_ARC_DURATION = 0.7;
 const FISH_JUMP_STAGGER = 0.35;
 const FISH_JUMP_HEIGHT = 1.1;
@@ -110,12 +102,7 @@ const FISH_TAIL_SWING = 0.16;
 
 const BIRD_FLOCK_CELL = 15;
 const BIRD_FLOCK_RANGE = Math.ceil(MAX_DIST / BIRD_FLOCK_CELL) + 1;
-const BIRD_FLOCK_DENSITY = 0.06;
-const BIRD_FLOCK_MIN_COUNT = 1;
-const BIRD_FLOCK_MAX_COUNT = 12;
-const BIRD_NOTICE_RADIUS = 6;
 const BIRD_NOTICE_PANTS_FLEEING_MULT = 1.5;
-const BIRD_FLEE_SPEED = 11;
 const BIRD_FLEE_DURATION = 2.5;
 const BIRD_RAMP_DURATION = 0.25;
 const BIRD_TURN_SPEED = 12;
@@ -134,7 +121,6 @@ const BIRD_NOISES = [
 
 const LEMUR_CELL = 17;
 const LEMUR_RANGE = Math.ceil(MAX_DIST / LEMUR_CELL) + 1;
-const LEMUR_DENSITY = 0.05;
 const LEMUR_RADIUS = 0.45;
 const LEMUR_SPEED = 3;
 const LEMUR_WALK_MIN = 1.5;
@@ -157,8 +143,6 @@ const BACON_DESPAWN_POP_DURATION = 0.3;
 const BACON_DESPAWN_TOTAL_DURATION = BACON_DESPAWN_BOUNCE_DURATION + BACON_DESPAWN_POP_DURATION;
 const BACON_DESPAWN_PARTICLE_COUNT = 9;
 const BACON_DESPAWN_PARTICLE_DIST = 0.9;
-const BOSS_BACON_CHANCE = 0.1;
-const BOSS_BACON_SCALE = 10;
 const BACON_SIZE_WEIGHTS = [
   { size: 1, weight: 32 },
   { size: 2, weight: 27 },
@@ -192,22 +176,17 @@ const BACON_MILL_SQUISH_AMOUNT = 0.32;
 
 const BUILDING_CELL = 46;
 const BUILDING_RANGE = Math.ceil((MAX_DIST + 25) / BUILDING_CELL) + 1;
-const BUILDING_DENSITY = 0.28;
 const DOOR_WIDTH = 1.8;
 const MIN_ROOM_SIZE = 3.2;
 const WALL_HEIGHT = 3;
 
 const PANTS_CELL = 13;
 const PANTS_RANGE = Math.ceil(MAX_DIST / PANTS_CELL) + 1;
-const PANTS_DENSITY = 0.09;
-const PANTS_ROOM_CHANCE = 0.15;
 const PANTS_WALK_SPEED = 2.2;
 const PANTS_WALK_MIN = 1.2;
 const PANTS_WALK_MAX = 3.2;
 const PANTS_PAUSE_MIN = 0.8;
 const PANTS_PAUSE_MAX = 2.2;
-const PANTS_NOTICE_RADIUS = 7;
-const PANTS_FLEE_SPEED = 9.5;
 const PANTS_FLEE_DURATION = 3;
 const PANTS_RAMP_DURATION = 0.35;
 const PANTS_TURN_SPEED = 10;
@@ -244,7 +223,6 @@ const PANTS_PROTECTED_PHRASES = [
   "No fear, bacon's here!", "Safe as long as there's bacon!", "Bacon knows no fear!",
 ];
 
-const SKY_CYCLE = 120;
 const SUN_RISE_BEARING = 0;
 const SUN_RADIUS_FRAC = 0.045;
 const MOON_RADIUS_FRAC = 0.035;
@@ -258,24 +236,18 @@ const PITCH_RAD = (PITCH_DEG * Math.PI) / 180;
 const PITCH_COS = Math.cos(PITCH_RAD);
 const PITCH_SIN = Math.sin(PITCH_RAD);
 const PITCH_TAN = Math.tan(PITCH_RAD);
-const MOVE_SPEED = 9;
 const MOVE_SPEED_BACK = 5.5;
-const NUBBY_ACCEL = 30;
-const NUBBY_DECEL = 45;
 const TURN_SPEED = 2.3;
 const CHAR_RADIUS = 0.55;
 const NUBBY_TIP_HEIGHT = 2 * CHAR_RADIUS + CHAR_RADIUS * 0.4;
 const SQUISH_AMOUNT = 0.16;
 const SQUISH_SETTLE_K = 220;
 const SQUISH_SETTLE_C = 14;
-const SPRINT_MULTIPLIER = 1.6;
 const JUMP_VELOCITY = 8.2;
 const JUMP_GRAVITY = 24;
 const LEMUR_JUMP_CLEAR_HEIGHT = 0.5;
 const PANTS_JUMP_CLEAR_HEIGHT = 0.5;
 
-const STAMINA_DRAIN_RATE = 1 / 7; // 50% slower than the original 1/3.5 (#74)
-const STAMINA_REFILL_RATE = 1 / 5;
 const STAMINA_BAR_FADE_SPEED = 6;
 const STAMINA_BAR_WIDTH = 70;
 const STAMINA_BAR_HEIGHT = 10;
@@ -299,6 +271,11 @@ const BUILDING_NEAR = [255, 195, 110];
 const BACON_NEAR = [255, 140, 105];
 const PANTS_NEAR = [60, 140, 255];
 const CHAR_COLOR = "#ff4d8d";
+
+// Player-editable tuning knobs (#24) — defaults, storage key, and loadWanderConfig() live in
+// wander-config.js (loaded before this file) so the game and games/wander/settings.html never
+// drift out of sync on what the knobs are or what they default to.
+const CONFIG = loadWanderConfig();
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
@@ -469,7 +446,7 @@ function buildFloorplan(width, depth, roomsWanted, rng) {
 }
 
 function buildBuilding(ix, iz) {
-  if (hash2(ix, iz, SEED + 55555) >= BUILDING_DENSITY) return null;
+  if (hash2(ix, iz, SEED + 55555) >= CONFIG.buildingDensity) return null;
 
   const rng = makeRng(ix, iz, SEED);
   const jx = rng(), jz = rng();
@@ -531,14 +508,14 @@ function buildBuilding(ix, iz) {
     }
   }
 
-  if (rng() < BOSS_BACON_CHANCE) {
-    const clearance = baconClearance(BOSS_BACON_SCALE);
+  if (rng() < CONFIG.bossBaconChance) {
+    const clearance = baconClearance((10 * (1 + CONFIG.bossBaconSizePercent / 100)));
     for (let attempt = 0; attempt < 8; attempt++) {
       const lx = (rng() - 0.5) * (width - 2.4);
       const lz = (rng() - 0.5) * (depth - 2.4);
       const wx = cx + lx, wz = cz + lz;
       if (walls.every((w) => pointToSegmentDist(wx, wz, w) > clearance)) {
-        bacon.push({ x: wx, z: wz, y: padHeight, rot: rng() * Math.PI * 2, scale: BOSS_BACON_SCALE, boss: true, key: ix + "_" + iz + "_bossb" });
+        bacon.push({ x: wx, z: wz, y: padHeight, rot: rng() * Math.PI * 2, scale: (10 * (1 + CONFIG.bossBaconSizePercent / 100)), boss: true, key: ix + "_" + iz + "_bossb" });
         break;
       }
     }
@@ -612,7 +589,7 @@ function buildLake(ix, iz) {
   if (lakeCache.has(key)) return lakeCache.get(key);
 
   let lake = null;
-  if (hash2(ix, iz, SEED + 991133) < LAKE_DENSITY) {
+  if (hash2(ix, iz, SEED + 991133) < CONFIG.lakeDensity) {
     const rng = makeRng(ix, iz, SEED + 5005);
     const jx = rng(), jz = rng();
     const cx = (ix + 0.5 + (jx - 0.5) * 0.5) * LAKE_CELL;
@@ -632,7 +609,7 @@ function buildLake(ix, iz) {
     }
 
     if (flat) {
-      const river = rng() < RIVER_CHANCE ? buildRiver(cx, cz, radius, waterY, rng) : null;
+      const river = rng() < CONFIG.riverChance ? buildRiver(cx, cz, radius, waterY, rng) : null;
       lake = { cx, cz, radius, waterY, key, river };
     }
   }
@@ -690,7 +667,7 @@ function ensureSpawnLake() {
 
     const ix = Math.floor(cx / LAKE_CELL), iz = Math.floor(cz / LAKE_CELL);
     const key = ix + "_" + iz;
-    const river = Math.random() < RIVER_CHANCE ? buildRiver(cx, cz, radius, waterY, Math.random) : null;
+    const river = Math.random() < CONFIG.riverChance ? buildRiver(cx, cz, radius, waterY, Math.random) : null;
     lakeCache.set(key, { cx, cz, radius, waterY, key, river });
     return;
   }
@@ -704,7 +681,7 @@ ensureSpawnLake();
 const fishState = new Map();
 
 function createFishJumpEvent(l) {
-  const count = FISH_SCHOOL_MIN + Math.floor(Math.random() * (FISH_SCHOOL_MAX - FISH_SCHOOL_MIN + 1));
+  const count = CONFIG.fishSchoolMin + Math.floor(Math.random() * (CONFIG.fishSchoolMax - CONFIG.fishSchoolMin + 1));
   const fish = [];
   for (let i = 0; i < count; i++) {
     const a = Math.random() * Math.PI * 2;
@@ -738,7 +715,7 @@ function createFishFlopEvent(l) {
 }
 
 function scheduleNextFishEvent() {
-  return FISH_EVENT_MIN_INTERVAL + Math.random() * (FISH_EVENT_MAX_INTERVAL - FISH_EVENT_MIN_INTERVAL);
+  return CONFIG.fishEventMinSeconds + Math.random() * (CONFIG.fishEventMaxSeconds - CONFIG.fishEventMinSeconds);
 }
 
 function updateFish(dt) {
@@ -981,7 +958,7 @@ function getNearbyTrees(px, pz) {
     for (let dx = -TREE_RANGE; dx <= TREE_RANGE; dx++) {
       const ix = cix + dx, iz = ciz + dz;
       const r = hash2(ix, iz, SEED + 7777);
-      if (r >= TREE_DENSITY) continue;
+      if (r >= CONFIG.treeDensity) continue;
       const jx = hash2(ix, iz, SEED + 1111);
       const jz = hash2(ix, iz, SEED + 2222);
       const tx = (ix + 0.5 + (jx - 0.5) * 0.7) * TREE_CELL;
@@ -994,7 +971,7 @@ function getNearbyTrees(px, pz) {
       const h2 = terrainHeight(tx, tz + 1);
       const slope = Math.abs(h1 - h0) + Math.abs(h2 - h0);
       if (slope > 3.2) continue;
-      const scale = 0.75 + hash2(ix, iz, SEED + 3333) * 1.0;
+      const scale = (0.75 + hash2(ix, iz, SEED + 3333) * 1.0) * (1 + CONFIG.treeSizePercent / 100);
       const key = ix + "_" + iz;
       const w = treeWobbles.get(key);
       const leanX = w ? w.dirX * w.offset : 0;
@@ -1033,7 +1010,7 @@ function getNearbyRocks(px, pz) {
     for (let dx = -ROCK_RANGE; dx <= ROCK_RANGE; dx++) {
       const ix = cix + dx, iz = ciz + dz;
       const r = hash2(ix, iz, SEED + 883311);
-      if (r >= ROCK_DENSITY) continue;
+      if (r >= CONFIG.rockDensity) continue;
       const jx = hash2(ix, iz, SEED + 883322);
       const jz = hash2(ix, iz, SEED + 883333);
       const rx = (ix + 0.5 + (jx - 0.5) * 0.7) * ROCK_CELL;
@@ -1041,7 +1018,7 @@ function getNearbyRocks(px, pz) {
       if (Math.hypot(rx - px, rz - pz) > MAX_DIST + ROCK_CELL) continue;
       if (currentBuildings.some((b) => Math.hypot(rx - b.cx, rz - b.cz) < b.footRadius + 3)) continue;
       if (currentLakes.some((l) => Math.hypot(rx - l.cx, rz - l.cz) < l.radius + 2)) continue;
-      const scale = 0.7 + hash2(ix, iz, SEED + 883344) * 0.8;
+      const scale = (0.7 + hash2(ix, iz, SEED + 883344) * 0.8) * (1 + CONFIG.rockSizePercent / 100);
       const rot = hash2(ix, iz, SEED + 883355) * Math.PI * 2;
       const jitterBase = [], jitterTop = [];
       for (let i = 0; i < 6; i++) {
@@ -1167,7 +1144,7 @@ function getNearbyPantsBase(px, pz) {
       const key = ix + "_" + iz;
       if (goneKeys.has(key)) continue;
       const r = hash2(ix, iz, SEED + 662211);
-      if (r >= PANTS_DENSITY) continue;
+      if (r >= CONFIG.pantsDensity) continue;
       const jx = hash2(ix, iz, SEED + 662222);
       const jz = hash2(ix, iz, SEED + 662233);
       const bx = (ix + 0.5 + (jx - 0.5) * 0.7) * PANTS_CELL;
@@ -1183,7 +1160,7 @@ function getNearbyPantsBase(px, pz) {
     if (goneKeys.has(key)) continue;
     const [ix, iz] = b.key.split("_").map(Number);
     const r = hash2(ix, iz, SEED + 778899);
-    if (r >= PANTS_ROOM_CHANCE) continue;
+    if (r >= CONFIG.pantsRoomChance) continue;
     const jx = hash2(ix, iz, SEED + 778811);
     const jz = hash2(ix, iz, SEED + 778822);
     const hw = Math.max(0.5, b.width / 2 - 1.4), hd = Math.max(0.5, b.depth / 2 - 1.4);
@@ -1236,7 +1213,7 @@ function drawSkyBody(elevation, azimuth, radius, color) {
 }
 
 function drawSkyBodies() {
-  const sunAngle = (skyTime / SKY_CYCLE) * Math.PI * 2;
+  const sunAngle = (skyTime / CONFIG.dayNightSeconds) * Math.PI * 2;
   const moonAngle = sunAngle + Math.PI;
   const sun = celestialPosition(sunAngle, SUN_RISE_BEARING);
   const moon = celestialPosition(moonAngle, SUN_RISE_BEARING);
@@ -1311,11 +1288,11 @@ function updatePants(dt, noticeMultiplier = 1) {
   for (const [key, st] of pantsState.entries()) {
     if (!st.fleeing) {
       let scareX = player.x, scareZ = player.z;
-      let noticed = Math.hypot(st.x - player.x, st.z - player.z) < PANTS_NOTICE_RADIUS * noticeMultiplier
+      let noticed = Math.hypot(st.x - player.x, st.z - player.z) < CONFIG.pantsNoticeRadius * noticeMultiplier
         && !wallBlocksLineOfSight(player.x, player.z, st.x, st.z);
       if (!noticed) {
         for (const l of currentLemurs) {
-          if (Math.hypot(st.x - l.x, st.z - l.z) < PANTS_NOTICE_RADIUS
+          if (Math.hypot(st.x - l.x, st.z - l.z) < CONFIG.pantsNoticeRadius
             && !wallBlocksLineOfSight(l.x, l.z, st.x, st.z)) {
             noticed = true;
             scareX = l.x;
@@ -1428,7 +1405,7 @@ function updatePants(dt, noticeMultiplier = 1) {
       if (Math.abs(diff) <= turnStep) st.facing = st.fleeHeading;
       else st.facing += Math.sign(diff) * turnStep;
 
-      const speed = PANTS_FLEE_SPEED * rampT;
+      const speed = CONFIG.pantsFleeSpeed * rampT;
       const fx = Math.sin(st.facing), fz = Math.cos(st.facing);
       let nx = st.x + fx * speed * dt;
       let nz = st.z + fz * speed * dt;
@@ -1542,7 +1519,7 @@ function getNearbyBirdFlocksBase(px, pz) {
       const key = ix + "_" + iz;
       if (goneBirdFlocks.has(key)) continue;
       const r = hash2(ix, iz, SEED + 991122);
-      if (r >= BIRD_FLOCK_DENSITY) continue;
+      if (r >= CONFIG.birdFlockDensity) continue;
       const jx = hash2(ix, iz, SEED + 991133);
       const jz = hash2(ix, iz, SEED + 991144);
       const bx = (ix + 0.5 + (jx - 0.5) * 0.7) * BIRD_FLOCK_CELL;
@@ -1550,7 +1527,7 @@ function getNearbyBirdFlocksBase(px, pz) {
       if (Math.hypot(bx - px, bz - pz) > MAX_DIST + BIRD_FLOCK_CELL) continue;
       if (currentBuildings.some((b) => Math.hypot(bx - b.cx, bz - b.cz) < b.footRadius + 3)) continue;
       if (getNearbyLakes(bx, bz).some((l) => Math.hypot(bx - l.cx, bz - l.cz) < l.radius + 3)) continue;
-      const count = BIRD_FLOCK_MIN_COUNT + Math.floor(hash2(ix, iz, SEED + 991155) * (BIRD_FLOCK_MAX_COUNT - BIRD_FLOCK_MIN_COUNT + 1));
+      const count = CONFIG.birdSchoolMin + Math.floor(hash2(ix, iz, SEED + 991155) * (CONFIG.birdSchoolMax - CONFIG.birdSchoolMin + 1));
       const birds = [];
       for (let i = 0; i < count; i++) {
         birds.push({
@@ -1588,12 +1565,12 @@ function updateBirdFlocks(dt, noticeMultiplier = 1) {
   for (const [key, st] of birdFlockState.entries()) {
     if (!st.flying) {
       let scareX = player.x, scareZ = player.z;
-      let noticed = Math.hypot(st.x - player.x, st.z - player.z) < BIRD_NOTICE_RADIUS * noticeMultiplier
+      let noticed = Math.hypot(st.x - player.x, st.z - player.z) < CONFIG.birdNoticeRadius * noticeMultiplier
         && !wallBlocksLineOfSight(player.x, player.z, st.x, st.z);
       if (!noticed) {
         for (const p of currentPants) {
           const mult = p.fleeing ? BIRD_NOTICE_PANTS_FLEEING_MULT : 1;
-          if (Math.hypot(st.x - p.x, st.z - p.z) < BIRD_NOTICE_RADIUS * mult
+          if (Math.hypot(st.x - p.x, st.z - p.z) < CONFIG.birdNoticeRadius * mult
             && !wallBlocksLineOfSight(p.x, p.z, st.x, st.z)) {
             noticed = true;
             scareX = p.x;
@@ -1622,7 +1599,7 @@ function updateBirdFlocks(dt, noticeMultiplier = 1) {
       const diff = angleDiff(st.fleeHeading, st.facing);
       if (Math.abs(diff) <= turnStep) st.facing = st.fleeHeading;
       else st.facing += Math.sign(diff) * turnStep;
-      const speed = BIRD_FLEE_SPEED * rampT;
+      const speed = CONFIG.birdFleeSpeed * rampT;
       const fx = Math.sin(st.facing), fz = Math.cos(st.facing);
       st.x += fx * speed * dt;
       st.z += fz * speed * dt;
@@ -1700,7 +1677,7 @@ function getNearbyLemursBase(px, pz) {
     for (let dx = -LEMUR_RANGE; dx <= LEMUR_RANGE; dx++) {
       const ix = cix + dx, iz = ciz + dz;
       const r = hash2(ix, iz, SEED + 774411);
-      if (r >= LEMUR_DENSITY) continue;
+      if (r >= CONFIG.lemurDensity) continue;
       const jx = hash2(ix, iz, SEED + 774422);
       const jz = hash2(ix, iz, SEED + 774433);
       const bx = (ix + 0.5 + (jx - 0.5) * 0.7) * LEMUR_CELL;
@@ -2100,14 +2077,14 @@ function update(dt) {
   const hasMoveInput = keys.forward || keys.backward;
   const wantsSprint = keys.shift && !staminaExhausted && stamina > 0;
   const sprinting = wantsSprint && hasMoveInput;
-  const sprintMul = wantsSprint ? SPRINT_MULTIPLIER : 1;
+  const sprintMul = wantsSprint ? CONFIG.sprintMultiplier : 1;
   const noticeMultiplier = sprinting ? RUNNING_NOTICE_MULTIPLIER : 1;
 
   if (sprinting) {
-    stamina = Math.max(0, stamina - STAMINA_DRAIN_RATE * dt);
+    stamina = Math.max(0, stamina - (1 / CONFIG.staminaDrainSeconds) * dt);
     if (stamina <= 0) staminaExhausted = true;
   } else if (stamina < 1) {
-    stamina = Math.min(1, stamina + STAMINA_REFILL_RATE * dt);
+    stamina = Math.min(1, stamina + (1 / CONFIG.staminaRefillSeconds) * dt);
     if (stamina >= 1) staminaExhausted = false;
   }
   const staminaBarTarget = sprinting || stamina < 1 ? 1 : 0;
@@ -2115,9 +2092,9 @@ function update(dt) {
   staminaBarOpacity += Math.sign(barDiff) * Math.min(Math.abs(barDiff), STAMINA_BAR_FADE_SPEED * dt);
 
   let targetSpeed = 0;
-  if (keys.forward) targetSpeed += MOVE_SPEED * sprintMul;
+  if (keys.forward) targetSpeed += CONFIG.moveSpeed * sprintMul;
   if (keys.backward) targetSpeed -= MOVE_SPEED_BACK * sprintMul;
-  const rate = Math.abs(targetSpeed) > Math.abs(currentSpeed) ? NUBBY_ACCEL : NUBBY_DECEL;
+  const rate = Math.abs(targetSpeed) > Math.abs(currentSpeed) ? CONFIG.accel : CONFIG.decel;
   const maxDelta = rate * dt;
   const speedDiff = targetSpeed - currentSpeed;
   if (Math.abs(speedDiff) <= maxDelta) currentSpeed = targetSpeed;

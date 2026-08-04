@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wander Settings — Meatflap Arcade</title>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="settings.css">
+  <script src="wander-config.js"></script>
+</head>
+<body>
+  <a class="back-link" href="index.html">← Wander</a>
+
+  <div class="settings-wrap">
+    <h1>Wander Settings</h1>
+    <p class="lead">
+      Tune the knobs, hit Save, then (re)load Wander in another tab. Most changes apply
+      immediately to unexplored areas; lake/river density only fully takes hold after
+      "New World" since lakes are generated once per session, not every frame.
+    </p>
+
+    <div id="saved-banner" class="saved-banner hidden">Saved! Reload Wander to see it.</div>
+
+    <form id="settings-form">
+      <fieldset>
+        <legend>World population</legend>
+        <div class="field-grid">
+          <label>Tree density <span class="hint">0–1</span>
+            <input type="number" name="treeDensity" min="0" max="1" step="0.01">
+          </label>
+          <label>Rock density <span class="hint">0–1</span>
+            <input type="number" name="rockDensity" min="0" max="1" step="0.01">
+          </label>
+          <label>Building density <span class="hint">0–1</span>
+            <input type="number" name="buildingDensity" min="0" max="1" step="0.01">
+          </label>
+          <label>Lemur density <span class="hint">0–1</span>
+            <input type="number" name="lemurDensity" min="0" max="1" step="0.01">
+          </label>
+          <label>Lake density <span class="hint">0–1</span>
+            <input type="number" name="lakeDensity" min="0" max="1" step="0.01">
+          </label>
+          <label>River chance <span class="hint">0–1, per lake</span>
+            <input type="number" name="riverChance" min="0" max="1" step="0.01">
+          </label>
+          <label>Pants density (outdoor) <span class="hint">0–1</span>
+            <input type="number" name="pantsDensity" min="0" max="1" step="0.01">
+          </label>
+          <label>Pants-in-bacon-room chance <span class="hint">0–1</span>
+            <input type="number" name="pantsRoomChance" min="0" max="1" step="0.01">
+          </label>
+          <label>Bird flock density <span class="hint">0–1</span>
+            <input type="number" name="birdFlockDensity" min="0" max="1" step="0.01">
+          </label>
+          <label>Bird school size, min <span class="hint">birds</span>
+            <input type="number" name="birdSchoolMin" min="1" step="1">
+          </label>
+          <label>Bird school size, max <span class="hint">birds</span>
+            <input type="number" name="birdSchoolMax" min="1" step="1">
+          </label>
+          <label>Boss bacon chance <span class="hint">0–1, per bacon spawn</span>
+            <input type="number" name="bossBaconChance" min="0" max="1" step="0.01">
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Movement &amp; stamina</legend>
+        <div class="field-grid">
+          <label>Day/night cycle <span class="hint">seconds</span>
+            <input type="number" name="dayNightSeconds" min="5" step="1">
+          </label>
+          <label>Move speed <span class="hint">units/sec</span>
+            <input type="number" name="moveSpeed" min="1" step="0.5">
+          </label>
+          <label>Acceleration <span class="hint">units/sec²</span>
+            <input type="number" name="accel" min="1" step="1">
+          </label>
+          <label>Deceleration <span class="hint">units/sec²</span>
+            <input type="number" name="decel" min="1" step="1">
+          </label>
+          <label>Sprint multiplier <span class="hint">× move speed</span>
+            <input type="number" name="sprintMultiplier" min="1" step="0.1">
+          </label>
+          <label>Stamina drain time <span class="hint">seconds of sprint to empty</span>
+            <input type="number" name="staminaDrainSeconds" min="0.5" step="0.5">
+          </label>
+          <label>Stamina refill time <span class="hint">seconds to refill from empty</span>
+            <input type="number" name="staminaRefillSeconds" min="0.5" step="0.5">
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Wildlife behavior</legend>
+        <div class="field-grid">
+          <label>Pants notice radius <span class="hint">units</span>
+            <input type="number" name="pantsNoticeRadius" min="0" step="0.5">
+          </label>
+          <label>Pants flee speed <span class="hint">units/sec</span>
+            <input type="number" name="pantsFleeSpeed" min="0" step="0.5">
+          </label>
+          <label>Bird notice radius <span class="hint">units</span>
+            <input type="number" name="birdNoticeRadius" min="0" step="0.5">
+          </label>
+          <label>Bird flee speed <span class="hint">units/sec</span>
+            <input type="number" name="birdFleeSpeed" min="0" step="0.5">
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Fish events</legend>
+        <div class="field-grid">
+          <label>Event interval, min <span class="hint">seconds, per lake</span>
+            <input type="number" name="fishEventMinSeconds" min="0.5" step="0.5">
+          </label>
+          <label>Event interval, max <span class="hint">seconds, per lake</span>
+            <input type="number" name="fishEventMaxSeconds" min="0.5" step="0.5">
+          </label>
+          <label>School size, min <span class="hint">fish</span>
+            <input type="number" name="fishSchoolMin" min="1" step="1">
+          </label>
+          <label>School size, max <span class="hint">fish</span>
+            <input type="number" name="fishSchoolMax" min="1" step="1">
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Sizes <span class="hint">% adjustment from the original size</span></legend>
+        <div class="field-grid">
+          <label>Tree size <span class="hint">%±</span>
+            <input type="number" name="treeSizePercent" step="5">
+          </label>
+          <label>Rock size <span class="hint">%±</span>
+            <input type="number" name="rockSizePercent" step="5">
+          </label>
+          <label>Boss bacon size <span class="hint">%±</span>
+            <input type="number" name="bossBaconSizePercent" step="5">
+          </label>
+        </div>
+      </fieldset>
+
+      <div class="btn-row">
+        <button id="save-btn" type="submit">Save</button>
+        <button id="reset-btn" type="button" class="mini-btn">Reset to defaults</button>
+      </div>
+    </form>
+  </div>
+
+  <script src="settings.js"></script>
+</body>
+</html>

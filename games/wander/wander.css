@@ -98,6 +98,11 @@
   color: var(--accent);
 }
 
+a.mini-btn {
+  display: inline-block;
+  text-decoration: none;
+}
+
 #board {
   background: #0d0f14;
   border: 2px solid var(--border);
