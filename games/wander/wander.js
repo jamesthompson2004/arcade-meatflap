@@ -274,7 +274,7 @@ const JUMP_GRAVITY = 24;
 const LEMUR_JUMP_CLEAR_HEIGHT = 0.5;
 const PANTS_JUMP_CLEAR_HEIGHT = 0.5;
 
-const STAMINA_DRAIN_RATE = 1 / 3.5;
+const STAMINA_DRAIN_RATE = 1 / 7; // 50% slower than the original 1/3.5 (#74)
 const STAMINA_REFILL_RATE = 1 / 5;
 const STAMINA_BAR_FADE_SPEED = 6;
 const STAMINA_BAR_WIDTH = 70;
