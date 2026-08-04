@@ -653,6 +653,50 @@ function getNearbyLakes(px, pz) {
   return list;
 }
 
+// The player always spawns at the origin (#70) — water is otherwise sparse enough that it
+// can take a while to stumble across, so force-insert a lake a short random distance to the
+// northwest of spawn by writing it straight into `lakeCache` before anything else queries
+// that cell. Once cached, `buildLake` for that cell just returns this instead of rolling its
+// own density check, so the forced lake behaves exactly like a natural one everywhere else
+// (rendering, fish, spawn-exclusion for buildings/pants/lemurs/birds, collision).
+const SPAWN_LAKE_DIST_MIN = LAKE_RADIUS_MAX + 14;
+const SPAWN_LAKE_DIST_MAX = LAKE_RADIUS_MAX + 34;
+const SPAWN_LAKE_BEARING = -Math.PI / 4; // northwest, using the same heading convention as player.heading (0 = +z/north, +x = east)
+const SPAWN_LAKE_BEARING_JITTER = Math.PI / 10;
+const SPAWN_LAKE_MAX_ATTEMPTS = 10;
+
+function ensureSpawnLake() {
+  for (let attempt = 0; attempt < SPAWN_LAKE_MAX_ATTEMPTS; attempt++) {
+    const bearing = SPAWN_LAKE_BEARING + (Math.random() - 0.5) * 2 * SPAWN_LAKE_BEARING_JITTER;
+    const dist = SPAWN_LAKE_DIST_MIN + Math.random() * (SPAWN_LAKE_DIST_MAX - SPAWN_LAKE_DIST_MIN);
+    const cx = Math.sin(bearing) * dist;
+    const cz = Math.cos(bearing) * dist;
+    const radius = LAKE_RADIUS_MIN + Math.random() * (LAKE_RADIUS_MAX - LAKE_RADIUS_MIN);
+    const waterY = terrainHeightRaw(cx, cz);
+
+    let flat = true;
+    const RING = 8;
+    for (let i = 0; i < RING; i++) {
+      const a = (i / RING) * Math.PI * 2;
+      const ex = cx + Math.cos(a) * radius, ez = cz + Math.sin(a) * radius;
+      if (Math.abs(terrainHeightRaw(ex, ez) - waterY) > LAKE_FLATNESS_MAX) {
+        flat = false;
+        break;
+      }
+    }
+    // Guarantee wins over perfect flatness — keep trying other spots, but on the last
+    // attempt force it in regardless so spawn is never left without nearby water.
+    if (!flat && attempt < SPAWN_LAKE_MAX_ATTEMPTS - 1) continue;
+
+    const ix = Math.floor(cx / LAKE_CELL), iz = Math.floor(cz / LAKE_CELL);
+    const key = ix + "_" + iz;
+    const river = Math.random() < RIVER_CHANCE ? buildRiver(cx, cz, radius, waterY, Math.random) : null;
+    lakeCache.set(key, { cx, cz, radius, waterY, key, river });
+    return;
+  }
+}
+ensureSpawnLake();
+
 // Per-lake fish event timer/state, keyed by the lake's own cache key. Only lakes currently
 // in `currentLakes` get their timer advanced — same "only ticks while relevant" convention
 // bird flocks and pants already use — so nothing depends on wall-clock time passing while
@@ -1129,6 +1173,7 @@ function getNearbyPantsBase(px, pz) {
       const bx = (ix + 0.5 + (jx - 0.5) * 0.7) * PANTS_CELL;
       const bz = (iz + 0.5 + (jz - 0.5) * 0.7) * PANTS_CELL;
       if (Math.hypot(bx - px, bz - pz) > MAX_DIST + PANTS_CELL) continue;
+      if (getNearbyLakes(bx, bz).some((l) => Math.hypot(bx - l.cx, bz - l.cz) < l.radius + PANTS_RADIUS + 2)) continue;
       list.push({ key, baseX: bx, baseZ: bz });
     }
   }
@@ -1342,6 +1387,16 @@ function updatePants(dt, noticeMultiplier = 1) {
             [nx, nz] = resolveWallCollision(nx, nz, seg, PANTS_RADIUS + 0.12);
           }
         }
+        for (const l of currentLakes) {
+          const dx = nx - l.cx, dz = nz - l.cz;
+          const dist = Math.hypot(dx, dz);
+          const minDist = PANTS_RADIUS + l.radius;
+          if (dist > 0.0001 && dist < minDist) {
+            const push = minDist - dist;
+            nx += (dx / dist) * push;
+            nz += (dz / dist) * push;
+          }
+        }
         st.x = nx;
         st.z = nz;
         st.legPhase += dt * 6;
@@ -1401,6 +1456,16 @@ function updatePants(dt, noticeMultiplier = 1) {
         if (Math.hypot(nx - b.cx, nz - b.cz) > b.footRadius + 4) continue;
         for (const seg of b.walls) {
           [nx, nz] = resolveWallCollision(nx, nz, seg, PANTS_RADIUS + 0.12);
+        }
+      }
+      for (const l of currentLakes) {
+        const dx = nx - l.cx, dz = nz - l.cz;
+        const dist = Math.hypot(dx, dz);
+        const minDist = PANTS_RADIUS + l.radius;
+        if (dist > 0.0001 && dist < minDist) {
+          const push = minDist - dist;
+          nx += (dx / dist) * push;
+          nz += (dz / dist) * push;
         }
       }
       st.x = nx;
@@ -1484,6 +1549,7 @@ function getNearbyBirdFlocksBase(px, pz) {
       const bz = (iz + 0.5 + (jz - 0.5) * 0.7) * BIRD_FLOCK_CELL;
       if (Math.hypot(bx - px, bz - pz) > MAX_DIST + BIRD_FLOCK_CELL) continue;
       if (currentBuildings.some((b) => Math.hypot(bx - b.cx, bz - b.cz) < b.footRadius + 3)) continue;
+      if (getNearbyLakes(bx, bz).some((l) => Math.hypot(bx - l.cx, bz - l.cz) < l.radius + 3)) continue;
       const count = BIRD_FLOCK_MIN_COUNT + Math.floor(hash2(ix, iz, SEED + 991155) * (BIRD_FLOCK_MAX_COUNT - BIRD_FLOCK_MIN_COUNT + 1));
       const birds = [];
       for (let i = 0; i < count; i++) {
@@ -1640,6 +1706,7 @@ function getNearbyLemursBase(px, pz) {
       const bx = (ix + 0.5 + (jx - 0.5) * 0.7) * LEMUR_CELL;
       const bz = (iz + 0.5 + (jz - 0.5) * 0.7) * LEMUR_CELL;
       if (Math.hypot(bx - px, bz - pz) > MAX_DIST + LEMUR_CELL) continue;
+      if (getNearbyLakes(bx, bz).some((l) => Math.hypot(bx - l.cx, bz - l.cz) < l.radius + LEMUR_RADIUS + 2)) continue;
       list.push({ key: ix + "_" + iz, baseX: bx, baseZ: bz });
     }
   }
@@ -1740,6 +1807,16 @@ function updateLemurs(dt) {
       if (Math.hypot(nx - b.cx, nz - b.cz) > b.footRadius + 4) continue;
       for (const seg of b.walls) {
         [nx, nz] = resolveWallCollision(nx, nz, seg, LEMUR_RADIUS + 0.12);
+      }
+    }
+    for (const l of currentLakes) {
+      const dx = nx - l.cx, dz = nz - l.cz;
+      const dist = Math.hypot(dx, dz);
+      const minDist = LEMUR_RADIUS + l.radius;
+      if (dist > 0.0001 && dist < minDist) {
+        const push = minDist - dist;
+        nx += (dx / dist) * push;
+        nz += (dz / dist) * push;
       }
     }
     st.x = nx;
@@ -1973,6 +2050,7 @@ function resetWorld(newSeed) {
   staminaBarOpacity = 0;
   lakeCache.clear();
   currentLakes = [];
+  ensureSpawnLake();
   fishState.clear();
   currentFish = [];
   gridCacheGX = null;
