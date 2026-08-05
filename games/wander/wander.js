@@ -630,21 +630,22 @@ function getNearbyLakes(px, pz) {
   return list;
 }
 
-// The player always spawns at the origin (#70) — water is otherwise sparse enough that it
-// can take a while to stumble across, so force-insert a lake a short random distance to the
-// northwest of spawn by writing it straight into `lakeCache` before anything else queries
-// that cell. Once cached, `buildLake` for that cell just returns this instead of rolling its
-// own density check, so the forced lake behaves exactly like a natural one everywhere else
-// (rendering, fish, spawn-exclusion for buildings/pants/lemurs/birds, collision).
+// The player always spawns at the origin facing heading 0 (#70) — water is otherwise sparse
+// enough that it can take a while to stumble across, so force-insert a lake a short random
+// distance away, somewhere in the 180° arc in front of spawn (#75 — originally a fixed
+// northwest bearing, which read as too restrictive/predictable), by writing it straight into
+// `lakeCache` before anything else queries that cell. Once cached, `buildLake` for that cell
+// just returns this instead of rolling its own density check, so the forced lake behaves
+// exactly like a natural one everywhere else (rendering, fish, spawn-exclusion for
+// buildings/pants/lemurs/birds, collision).
 const SPAWN_LAKE_DIST_MIN = LAKE_RADIUS_MAX + 14;
 const SPAWN_LAKE_DIST_MAX = LAKE_RADIUS_MAX + 34;
-const SPAWN_LAKE_BEARING = -Math.PI / 4; // northwest, using the same heading convention as player.heading (0 = +z/north, +x = east)
-const SPAWN_LAKE_BEARING_JITTER = Math.PI / 10;
+const SPAWN_LAKE_ARC = Math.PI; // 180°, centered on the player's forward direction at spawn (heading 0 = +z)
 const SPAWN_LAKE_MAX_ATTEMPTS = 10;
 
 function ensureSpawnLake() {
   for (let attempt = 0; attempt < SPAWN_LAKE_MAX_ATTEMPTS; attempt++) {
-    const bearing = SPAWN_LAKE_BEARING + (Math.random() - 0.5) * 2 * SPAWN_LAKE_BEARING_JITTER;
+    const bearing = (Math.random() - 0.5) * SPAWN_LAKE_ARC;
     const dist = SPAWN_LAKE_DIST_MIN + Math.random() * (SPAWN_LAKE_DIST_MAX - SPAWN_LAKE_DIST_MIN);
     const cx = Math.sin(bearing) * dist;
     const cz = Math.cos(bearing) * dist;
