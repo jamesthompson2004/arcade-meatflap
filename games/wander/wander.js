@@ -2000,6 +2000,10 @@ function updateBaconDespawns(dt) {
 }
 
 function resetWorld(newSeed) {
+  // Re-read settings.html's saved values so "New World" picks up config changes without
+  // requiring a full page reload — CONFIG is a single shared object (not reassigned) since
+  // plenty of code closed over the original reference.
+  Object.assign(CONFIG, loadWanderConfig());
   SEED = newSeed;
   player = { x: 0, z: 0, heading: 0 };
   baconCollected = 0;
