@@ -105,23 +105,7 @@ remembers the `skyTime` a key was removed at and forgets it again once a timeout
 (60s/45s/75s respectively — the day/night cycle is 120s). #62 — added a canvas-drawn compass
 at the top-left (deliberately *not* top-center, which collides with the fixed-position title
 in desktop-fill mode): a fixed marker at top means "straight ahead," and N/E/S/W rotate
-around it using the same relative-bearing math `celestialScreenPos` already uses for the sun.
-
-New game: **Skibidi Translator** (`games/skibidi/`, #53 then #69). Type a sentence, content
-words get swapped for slang while function words (a stoplist of ~90 articles/pronouns/
-prepositions/auxiliary verbs) are left alone so the sentence's grammar stays legible. Each
-swap keeps the original word's suffix (-s/-ing/-ed/-er/-est/-ly) and capitalization, so tense
-and number still agree — that's the whole trick and it's in `detectForm`/`inflect`/
-`genericInflect` if you want to add more words. Started with just "skibidi" (#53), then James
-supplied a full Gen-Z slang list and #69 expanded `SLANG_WORDS` to ~30 terms plus a
-`SLANG_PHRASES` list of fixed multi-word expressions (no cap, touch grass, main character
-energy, ...) that are only ever chosen for a *plain*-form word, never inflected, so nothing
-ever becomes "no capping." Also added the matching `game:skibidi` GitHub label — if you add
-another new game, it wants one too, same convention as the other `game:*` labels. One thing
-worth knowing: the highlighter tracks which tokens got replaced *during* the substitution pass
-itself (a token array with a `replaced` flag) rather than pattern-matching the output
-afterward — the original one-word version got away with regex-detecting "skibidi*" in the
-output, but that stops working the moment the replacement pool isn't a single word anymore. 🥓
+around it using the same relative-bearing math `celestialScreenPos` already uses for the sun. 🥓
 
 **2026-08-04 ET:** Another session, another batch of Wander work, plus the settings sheet
 James had wanted for a while. In rough order:
