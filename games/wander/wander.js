@@ -223,6 +223,19 @@ const PANTS_PROTECTED_PHRASES = [
   "No fear, bacon's here!", "Safe as long as there's bacon!", "Bacon knows no fear!",
 ];
 
+// Pants that wander near each other pause for a brief "discussion" (#77), then one is
+// elected leader (implicitly — whichever pants nobody points `leaderKey` at) and the other
+// follows. A free pants meeting an already-grouped one joins that same leader directly
+// rather than following a follower, so the structure always stays flat (no follow-chains)
+// no matter how large the resulting crowd gets.
+const PANTS_GROUP_RADIUS = 2.6;
+const PANTS_MEETING_DURATION = 1.1;
+const PANTS_FOLLOW_MIN_DIST = 1.1;
+const PANTS_FOLLOW_MAX_DIST = 2.6;
+const PANTS_MEETING_PHRASES = [
+  "Oh, hello!", "Shall we?", "Right this way.", "Splendid idea.", "After you.", "Two heads are better than none.",
+];
+
 const SUN_RISE_BEARING = 0;
 const SUN_RADIUS_FRAC = 0.045;
 const MOON_RADIUS_FRAC = 0.035;
@@ -1262,6 +1275,8 @@ function getNearbyPants(px, pz) {
         walkTimer: PANTS_WALK_MIN + Math.random() * (PANTS_WALK_MAX - PANTS_WALK_MIN),
         pauseTimer: 0, appreciationCooldown: Math.random() * PANTS_APPRECIATION_COOLDOWN,
         protectionCooldown: Math.random() * PANTS_PROTECTION_COOLDOWN,
+        leaderKey: null, meetingTimer: 0, meetingWith: null, pendingLeaderKey: null,
+        followOffX: 0, followOffZ: 0,
       };
       pantsState.set(base.key, st);
     }
@@ -1316,6 +1331,10 @@ function updatePants(dt, noticeMultiplier = 1) {
         st.bubbleTimer = PANTS_BUBBLE_DURATION;
         st.bubbleText = PANTS_PHRASES[Math.floor(Math.random() * PANTS_PHRASES.length)];
         st.bubbleFontSize = 13;
+        st.leaderKey = null;
+        st.meetingTimer = 0;
+        st.meetingWith = null;
+        st.pendingLeaderKey = null;
         scares++;
       } else if (noticed && protectedByBacon) {
         st.protectionCooldown -= dt;
@@ -1328,61 +1347,168 @@ function updatePants(dt, noticeMultiplier = 1) {
           st.protectionCooldown = PANTS_PROTECTION_COOLDOWN;
           bubbleFiredThisFrame = true;
         }
-      } else if (st.pauseTimer > 0) {
-        st.pauseTimer -= dt;
-        if (st.pauseTimer <= 0) {
+      } else if (st.meetingTimer > 0) {
+        st.meetingTimer -= dt;
+        if (st.meetingTimer <= 0) {
+          st.leaderKey = st.pendingLeaderKey;
+          st.pendingLeaderKey = null;
+          st.meetingWith = null;
           st.facing = Math.random() * Math.PI * 2;
           st.walkTimer = PANTS_WALK_MIN + Math.random() * (PANTS_WALK_MAX - PANTS_WALK_MIN);
         }
+      } else if (st.leaderKey) {
+        const leader = pantsState.get(st.leaderKey);
+        if (!leader || leader.fleeing) {
+          // Leader wandered out of range, despawned, or bolted — the herd can't keep up
+          // (leader moves at flee speed), so just disband and go back to wandering solo.
+          st.leaderKey = null;
+        } else {
+          if (st.followOffX === 0 && st.followOffZ === 0) {
+            const ang = Math.random() * Math.PI * 2;
+            const followDist = PANTS_FOLLOW_MIN_DIST + Math.random() * (PANTS_FOLLOW_MAX_DIST - PANTS_FOLLOW_MIN_DIST);
+            st.followOffX = Math.cos(ang) * followDist;
+            st.followOffZ = Math.sin(ang) * followDist;
+          }
+          const tx = leader.x + st.followOffX, tz = leader.z + st.followOffZ;
+          const toTargetDist = Math.hypot(tx - st.x, tz - st.z);
+          if (toTargetDist > 0.35) {
+            st.facing = Math.atan2(tx - st.x, tz - st.z);
+            const fx = Math.sin(st.facing), fz = Math.cos(st.facing);
+            let nx = st.x + fx * PANTS_WALK_SPEED * dt;
+            let nz = st.z + fz * PANTS_WALK_SPEED * dt;
+            for (const t of currentTrees) {
+              const dx = nx - t.x, dz = nz - t.z;
+              const treeDist = Math.hypot(dx, dz);
+              const minDist = PANTS_RADIUS + TREE_RADIUS * t.scale;
+              if (treeDist > 0.0001 && treeDist < minDist) {
+                const push = minDist - treeDist;
+                nx += (dx / treeDist) * push;
+                nz += (dz / treeDist) * push;
+              }
+            }
+            for (const r of currentRocks) {
+              const dx = nx - r.x, dz = nz - r.z;
+              const rockDist = Math.hypot(dx, dz);
+              const minDist = PANTS_RADIUS + ROCK_RADIUS * r.scale;
+              if (rockDist > 0.0001 && rockDist < minDist) {
+                const push = minDist - rockDist;
+                nx += (dx / rockDist) * push;
+                nz += (dz / rockDist) * push;
+              }
+            }
+            for (const b of currentBuildings) {
+              if (Math.hypot(nx - b.cx, nz - b.cz) > b.footRadius + 4) continue;
+              for (const seg of b.walls) {
+                [nx, nz] = resolveWallCollision(nx, nz, seg, PANTS_RADIUS + 0.12);
+              }
+            }
+            for (const l of currentLakes) {
+              const dx = nx - l.cx, dz = nz - l.cz;
+              const dist = Math.hypot(dx, dz);
+              const minDist = PANTS_RADIUS + l.radius;
+              if (dist > 0.0001 && dist < minDist) {
+                const push = minDist - dist;
+                nx += (dx / dist) * push;
+                nz += (dz / dist) * push;
+              }
+            }
+            st.x = nx;
+            st.z = nz;
+            st.legPhase += dt * 6;
+          }
+        }
       } else {
-        st.walkTimer -= dt;
-        const fx = Math.sin(st.facing), fz = Math.cos(st.facing);
-        let nx = st.x + fx * PANTS_WALK_SPEED * dt;
-        let nz = st.z + fz * PANTS_WALK_SPEED * dt;
-        for (const t of currentTrees) {
-          const dx = nx - t.x, dz = nz - t.z;
-          const treeDist = Math.hypot(dx, dz);
-          const minDist = PANTS_RADIUS + TREE_RADIUS * t.scale;
-          if (treeDist > 0.0001 && treeDist < minDist) {
-            const push = minDist - treeDist;
-            nx += (dx / treeDist) * push;
-            nz += (dz / treeDist) * push;
+        // Free agent, not currently discussing or following anyone — see if there's a
+        // nearby pants worth striking up a conversation with (#77), regardless of whether
+        // this one is mid-pause or mid-walk right now. Only the free side of the pair needs
+        // a new leaderKey: if the other pants already follows someone, we join that same
+        // leader directly (never a follower-of-a-follower, so the crowd structure stays flat
+        // no matter how large it gets); if the other is itself free, it implicitly becomes
+        // the leader — nothing about it needs to change, "leader" just means "a pants at
+        // least one other pants is currently follow-targeting."
+        let startedMeeting = false;
+        for (const [otherKey, other] of pantsState.entries()) {
+          if (otherKey === key || other.fleeing || other.meetingTimer > 0) continue;
+          if (Math.hypot(st.x - other.x, st.z - other.z) >= PANTS_GROUP_RADIUS) continue;
+          const otherLeader = other.leaderKey || otherKey;
+          if (otherLeader === key) continue; // other already follows me — nothing to resolve
+          st.pendingLeaderKey = otherLeader;
+          st.meetingWith = otherKey;
+          st.meetingTimer = PANTS_MEETING_DURATION;
+          st.bubbleTimer = PANTS_BUBBLE_DURATION;
+          st.bubbleText = PANTS_MEETING_PHRASES[Math.floor(Math.random() * PANTS_MEETING_PHRASES.length)];
+          st.bubbleFontSize = 13;
+          if (!other.leaderKey) {
+            // Other is free (or an established leader) too — give it a matching pause/bubble
+            // without changing its own leaderKey, so it reads as a mutual chat either way.
+            other.pendingLeaderKey = null;
+            other.meetingWith = key;
+            other.meetingTimer = PANTS_MEETING_DURATION;
+            other.bubbleTimer = PANTS_BUBBLE_DURATION;
+            other.bubbleText = PANTS_MEETING_PHRASES[Math.floor(Math.random() * PANTS_MEETING_PHRASES.length)];
+            other.bubbleFontSize = 13;
           }
+          startedMeeting = true;
+          break;
         }
-        for (const r of currentRocks) {
-          const dx = nx - r.x, dz = nz - r.z;
-          const rockDist = Math.hypot(dx, dz);
-          const minDist = PANTS_RADIUS + ROCK_RADIUS * r.scale;
-          if (rockDist > 0.0001 && rockDist < minDist) {
-            const push = minDist - rockDist;
-            nx += (dx / rockDist) * push;
-            nz += (dz / rockDist) * push;
+        if (startedMeeting) {
+          // Meeting timer now drives behavior from here — nothing more to do this frame.
+        } else if (st.pauseTimer > 0) {
+          st.pauseTimer -= dt;
+          if (st.pauseTimer <= 0) {
+            st.facing = Math.random() * Math.PI * 2;
+            st.walkTimer = PANTS_WALK_MIN + Math.random() * (PANTS_WALK_MAX - PANTS_WALK_MIN);
           }
-        }
-        for (const b of currentBuildings) {
-          if (Math.hypot(nx - b.cx, nz - b.cz) > b.footRadius + 4) continue;
-          for (const seg of b.walls) {
-            [nx, nz] = resolveWallCollision(nx, nz, seg, PANTS_RADIUS + 0.12);
+        } else {
+          st.walkTimer -= dt;
+          const fx = Math.sin(st.facing), fz = Math.cos(st.facing);
+          let nx = st.x + fx * PANTS_WALK_SPEED * dt;
+          let nz = st.z + fz * PANTS_WALK_SPEED * dt;
+          for (const t of currentTrees) {
+            const dx = nx - t.x, dz = nz - t.z;
+            const treeDist = Math.hypot(dx, dz);
+            const minDist = PANTS_RADIUS + TREE_RADIUS * t.scale;
+            if (treeDist > 0.0001 && treeDist < minDist) {
+              const push = minDist - treeDist;
+              nx += (dx / treeDist) * push;
+              nz += (dz / treeDist) * push;
+            }
           }
-        }
-        for (const l of currentLakes) {
-          const dx = nx - l.cx, dz = nz - l.cz;
-          const dist = Math.hypot(dx, dz);
-          const minDist = PANTS_RADIUS + l.radius;
-          if (dist > 0.0001 && dist < minDist) {
-            const push = minDist - dist;
-            nx += (dx / dist) * push;
-            nz += (dz / dist) * push;
+          for (const r of currentRocks) {
+            const dx = nx - r.x, dz = nz - r.z;
+            const rockDist = Math.hypot(dx, dz);
+            const minDist = PANTS_RADIUS + ROCK_RADIUS * r.scale;
+            if (rockDist > 0.0001 && rockDist < minDist) {
+              const push = minDist - rockDist;
+              nx += (dx / rockDist) * push;
+              nz += (dz / rockDist) * push;
+            }
           }
-        }
-        st.x = nx;
-        st.z = nz;
-        st.legPhase += dt * 6;
-        if (st.walkTimer <= 0) {
-          st.pauseTimer = PANTS_PAUSE_MIN + Math.random() * (PANTS_PAUSE_MAX - PANTS_PAUSE_MIN);
+          for (const b of currentBuildings) {
+            if (Math.hypot(nx - b.cx, nz - b.cz) > b.footRadius + 4) continue;
+            for (const seg of b.walls) {
+              [nx, nz] = resolveWallCollision(nx, nz, seg, PANTS_RADIUS + 0.12);
+            }
+          }
+          for (const l of currentLakes) {
+            const dx = nx - l.cx, dz = nz - l.cz;
+            const dist = Math.hypot(dx, dz);
+            const minDist = PANTS_RADIUS + l.radius;
+            if (dist > 0.0001 && dist < minDist) {
+              const push = minDist - dist;
+              nx += (dx / dist) * push;
+              nz += (dz / dist) * push;
+            }
+          }
+          st.x = nx;
+          st.z = nz;
+          st.legPhase += dt * 6;
+          if (st.walkTimer <= 0) {
+            st.pauseTimer = PANTS_PAUSE_MIN + Math.random() * (PANTS_PAUSE_MAX - PANTS_PAUSE_MIN);
+          }
         }
       }
-      if (!(noticed && !protectedByBacon) && !bubbleFiredThisFrame) {
+      if (!(noticed && !protectedByBacon) && !bubbleFiredThisFrame && st.meetingTimer <= 0) {
         st.appreciationCooldown -= dt;
         if (st.appreciationCooldown <= 0) {
           if (roomValue > 0
