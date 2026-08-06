@@ -228,7 +228,7 @@ const PANTS_PROTECTED_PHRASES = [
 // follows. A free pants meeting an already-grouped one joins that same leader directly
 // rather than following a follower, so the structure always stays flat (no follow-chains)
 // no matter how large the resulting crowd gets.
-const PANTS_GROUP_RADIUS = 2.6;
+const PANTS_GROUP_RADIUS = 6;
 const PANTS_MEETING_DURATION = 1.1;
 const PANTS_FOLLOW_MIN_DIST = 1.1;
 const PANTS_FOLLOW_MAX_DIST = 2.6;
