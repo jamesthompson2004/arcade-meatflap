@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Baconiza — Meatflap Arcade</title>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="baconiza.css">
+</head>
+<body>
+  <a class="back-link" href="../../">← Arcade</a>
+
+  <div class="baconiza-wrap">
+    <h1>Baconiza</h1>
+    <p class="lead">
+      A clone of Eliza, the 1966 pattern-matching therapist — except this one has a working
+      theory that every problem you have is, at its core, a bacon problem.
+    </p>
+
+    <div class="btn-row">
+      <button id="restart-btn" type="button" class="mini-btn">🔁 New conversation</button>
+    </div>
+
+    <div id="transcript" class="transcript" aria-live="polite"></div>
+
+    <form id="input-form" class="input-row">
+      <input id="input-text" type="text" autocomplete="off" placeholder="Type here and press Enter…">
+      <button type="submit">Send</button>
+    </form>
+  </div>
+
+  <script src="baconiza.js"></script>
+</body>
+</html>
