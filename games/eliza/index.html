@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Eliza — Meatflap Arcade</title>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="eliza.css">
+</head>
+<body>
+  <a class="back-link" href="../../">← Arcade</a>
+
+  <div class="eliza-wrap">
+    <h1>Eliza</h1>
+    <p class="lead">
+      A recreation of Joseph Weizenbaum's 1966 DOCTOR script — the original pattern-matching
+      "chatbot," decades before the term existed. It isn't reading a word you type; it's just
+      very good at handing your own sentences back to you.
+    </p>
+
+    <div class="btn-row">
+      <button id="restart-btn" type="button" class="mini-btn">🔁 New conversation</button>
+    </div>
+
+    <div id="transcript" class="transcript" aria-live="polite"></div>
+
+    <form id="input-form" class="input-row">
+      <input id="input-text" type="text" autocomplete="off" placeholder="Type here and press Enter…">
+      <button type="submit">Send</button>
+    </form>
+  </div>
+
+  <script src="eliza.js"></script>
+</body>
+</html>

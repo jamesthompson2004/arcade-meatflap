@@ -167,6 +167,15 @@ body {
   font-size: 2.5rem;
 }
 
+.eliza-thumb {
+  background: linear-gradient(135deg, #1a2e2a, #14181f 85%);
+}
+
+.eliza-thumb::after {
+  content: "🛋️";
+  font-size: 2.5rem;
+}
+
 .soon-thumb {
   background: #1b1f2a;
   color: var(--muted);
