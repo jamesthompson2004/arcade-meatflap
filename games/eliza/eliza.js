@@ -21,16 +21,40 @@ const CONTRACTION_EXPANSIONS = [
   [/\bDON'?T\b/g, "DO NOT"],
   [/\bCAN'?T\b/g, "CAN NOT"],
   [/\bWON'?T\b/g, "WILL NOT"],
+  [/\bISN'T\b/g, "IS NOT"],
+  [/\bAREN'T\b/g, "ARE NOT"],
+  [/\bWASN'T\b/g, "WAS NOT"],
+  [/\bWEREN'T\b/g, "WERE NOT"],
+  [/\bHASN'T\b/g, "HAS NOT"],
+  [/\bHAVEN'T\b/g, "HAVE NOT"],
+  [/\bHADN'T\b/g, "HAD NOT"],
+  [/\bDOESN'T\b/g, "DOES NOT"],
+  [/\bDIDN'T\b/g, "DID NOT"],
+  [/\bSHOULDN'T\b/g, "SHOULD NOT"],
+  [/\bWOULDN'T\b/g, "WOULD NOT"],
+  [/\bCOULDN'T\b/g, "COULD NOT"],
   [/\bI'M\b/g, "I AM"],
   [/\bYOU'RE\b/g, "YOU ARE"],
-  [/\bI'VE\b/g, "I HAVE"],
-  [/\bYOU'VE\b/g, "YOU HAVE"],
-  [/\bI'D\b/g, "I WOULD"],
-  [/\bYOU'D\b/g, "YOU WOULD"],
-  [/\bI'LL\b/g, "I WILL"],
-  [/\bYOU'LL\b/g, "YOU WILL"],
+  [/\bHE'S\b/g, "HE IS"],
+  [/\bSHE'S\b/g, "SHE IS"],
+  [/\bTHAT'S\b/g, "THAT IS"],
+  [/\bTHERE'S\b/g, "THERE IS"],
   [/\bWHAT'S\b/g, "WHAT IS"],
   [/\bIT'S\b/g, "IT IS"],
+  [/\bWE'RE\b/g, "WE ARE"],
+  [/\bTHEY'RE\b/g, "THEY ARE"],
+  [/\bI'VE\b/g, "I HAVE"],
+  [/\bYOU'VE\b/g, "YOU HAVE"],
+  [/\bWE'VE\b/g, "WE HAVE"],
+  [/\bTHEY'VE\b/g, "THEY HAVE"],
+  [/\bI'D\b/g, "I WOULD"],
+  [/\bYOU'D\b/g, "YOU WOULD"],
+  [/\bWE'D\b/g, "WE WOULD"],
+  [/\bTHEY'D\b/g, "THEY WOULD"],
+  [/\bI'LL\b/g, "I WILL"],
+  [/\bYOU'LL\b/g, "YOU WILL"],
+  [/\bWE'LL\b/g, "WE WILL"],
+  [/\bTHEY'LL\b/g, "THEY WILL"],
 ];
 
 // Applied per-word from the ORIGINAL value only (not iteratively), so this is a simultaneous
@@ -89,6 +113,15 @@ function applyTemplate(template, caps) {
 // keywords appear in the same clause), decomps tried in order, each with reassemblies cycled
 // in order. `memory: true` also stashes a MEMORY-list line, replayed later on a keyword-less
 // turn — the mechanism the paper singles out as ELIZA's way of seeming to "remember."
+//
+// Capture numbering gotcha (this bit several new patterns before it was caught): {n} in a
+// reassembly refers to the nth W(...)/ALT(...) token in that decomposition's pattern —
+// literal words don't count. `[W(0), "YOU", "LOVE", W(0)]` has only 2 captures ({1} pre,
+// {2} post) despite being a 4-token pattern; a reassembly referencing {3} or {4} silently
+// resolves to an empty string instead of erroring, so a wrong index doesn't fail loudly, it
+// just quietly drops words from the output. After adding or editing any pattern, sanity-check
+// it — e.g. run this in the console: for each decomp, count `pattern.filter(t => t.wild ||
+// t.alt).length` and confirm no reassembly references a {n} above that count.
 const FAMILY_WORDS = ["MOTHER", "FATHER", "MOM", "DAD", "SISTER", "BROTHER", "WIFE", "HUSBAND", "FAMILY", "CHILDREN", "PARENTS"];
 // {2} is the bare family word itself (e.g. "mother"); {3} is whatever follows it in the
 // sentence, pronoun-reflected (e.g. "takes care of me" -> "takes care of you"). Templates
@@ -116,17 +149,17 @@ const KEYWORDS = [
     triggers: ["REMEMBER"], rank: 5,
     decomps: [
       { pattern: [W(0), "DO", "I", "REMEMBER", W(0)], idx: 0, reassemblies: [
-        "Did you think I would forget {4}?",
-        "Why do you think I should recall {4} now?",
-        "What about {4}?",
-        "You mentioned {4}?",
+        "Did you think I would forget {2}?",
+        "Why do you think I should recall {2} now?",
+        "What about {2}?",
+        "You mentioned {2}?",
       ] },
       { pattern: [W(0), "YOU", "REMEMBER", W(0)], idx: 0, reassemblies: [
-        "Do you often think of {3}?",
-        "Does thinking of {3} bring anything else to mind?",
+        "Do you often think of {2}?",
+        "Does thinking of {2} bring anything else to mind?",
         "What else do you remember?",
-        "Why do you remember {3} just now?",
-        "What in the present situation reminds you of {3}?",
+        "Why do you remember {2} just now?",
+        "What in the present situation reminds you of {2}?",
       ] },
     ],
   },
@@ -253,15 +286,25 @@ const KEYWORDS = [
         "Do you enjoy being {3}?",
       ] },
       { pattern: [W(0), "YOU", "CAN", "NOT", W(0)], idx: 0, reassemblies: [
-        "How do you know you can't {4}?",
+        "How do you know you can't {2}?",
         "Have you tried?",
-        "Perhaps you could {4} now.",
-        "Do you really want to be able to {4}?",
+        "Perhaps you could {2} now.",
+        "Do you really want to be able to {2}?",
+      ] },
+      { pattern: [W(0), "YOU", "FEEL", "LIKE", W(0)], idx: 0, reassemblies: [
+        "Why do you feel like {2}?",
+        "What would it take to not feel like {2}?",
+        "How long have you felt like {2}?",
       ] },
       { pattern: [W(0), "YOU", "FEEL", W(0)], idx: 0, reassemblies: [
-        "Do you often feel {3}?",
-        "Do you enjoy feeling {3}?",
-        "Of what does feeling {3} remind you?",
+        "Do you often feel {2}?",
+        "Do you enjoy feeling {2}?",
+        "Of what does feeling {2} remind you?",
+      ] },
+      { pattern: [W(0), "YOU", "HAVE", "BEEN", W(0)], idx: 0, reassemblies: [
+        "How long have you been {2}?",
+        "What changed?",
+        "What was different before you were {2}?",
       ] },
       { pattern: [W(0), "YOU", W(0)], idx: 0, reassemblies: [
         "Can you elaborate on that?",
@@ -348,6 +391,168 @@ const KEYWORDS = [
       "Do you really think so?",
     ] }],
   },
+  {
+    triggers: ["BUT", "HOWEVER"], rank: 1,
+    decomps: [{ pattern: [W(0), ALT("BUT", "HOWEVER"), W(0)], idx: 0, reassemblies: [
+      "You say 'but' — what's the reservation?",
+      "What comes after that 'but' that worries you?",
+      "Is that a real objection, or a habit?",
+      "What would you say if you dropped the 'but'?",
+    ] }],
+  },
+  {
+    triggers: ["LOVE", "LOVES", "LOVED"], rank: 2,
+    decomps: [
+      { pattern: [W(0), "YOU", "LOVE", W(0)], idx: 0, reassemblies: [
+        "What do you love about {2}?",
+        "How long have you loved {2}?",
+        "Does loving {2} make you happy?",
+        "Have you told {2} that?",
+      ] },
+      { pattern: [W(0)], idx: 0, reassemblies: [
+        "Tell me more about that love.",
+        "Love is complicated, isn't it?",
+        "What does love mean to you?",
+      ] },
+    ],
+  },
+  {
+    triggers: ["HATE", "HATES", "HATED"], rank: 2,
+    decomps: [
+      { pattern: [W(0), "YOU", "HATE", W(0)], idx: 0, reassemblies: [
+        "Why do you hate {2}?",
+        "What is it about {2} that bothers you so much?",
+        "Has hating {2} always felt this way?",
+      ] },
+      { pattern: [W(0)], idx: 0, reassemblies: [
+        "That's strong language. What's behind it?",
+        "Hate takes a lot of energy. What's it protecting you from?",
+      ] },
+    ],
+  },
+  {
+    triggers: ["AFRAID", "SCARED", "TERRIFIED", "FEAR", "SCARY"], rank: 3,
+    decomps: [
+      { pattern: [W(0), ALT("AFRAID", "SCARED", "TERRIFIED"), "OF", W(0)], idx: 0, reassemblies: [
+        "What is it about {3} that frightens you?",
+        "How long have you been afraid of {3}?",
+        "Do you think {3} could really hurt you?",
+      ] },
+      { pattern: [W(0)], idx: 0, reassemblies: [
+        "What are you afraid of, exactly?",
+        "Fear can be very revealing.",
+        "Does that fear stop you from doing something?",
+      ] },
+    ],
+  },
+  {
+    triggers: ["ANGRY", "MAD", "FURIOUS", "ANNOYED", "IRRITATED"], rank: 2,
+    decomps: [{ pattern: [W(0)], idx: 0, reassemblies: [
+      "What makes you feel that way?",
+      "Is it really anger, or something else underneath?",
+      "Who or what triggered that?",
+      "Does staying angry help?",
+    ] }],
+  },
+  {
+    triggers: ["HAPPY", "GLAD", "EXCITED"], rank: 0,
+    decomps: [{ pattern: [W(0)], idx: 0, reassemblies: [
+      "What's making you feel that way?",
+      "It's good to hear that.",
+      "Do you often feel this way?",
+    ] }],
+  },
+  {
+    triggers: ["GUILTY", "GUILT", "ASHAMED"], rank: 3,
+    decomps: [{ pattern: [W(0)], idx: 0, reassemblies: [
+      "Why do you feel guilty?",
+      "Guilt can be a heavy thing to carry.",
+      "What would it take for you to forgive yourself?",
+    ] }],
+  },
+  {
+    triggers: ["LONELY", "ALONE"], rank: 3,
+    decomps: [{ pattern: [W(0)], idx: 0, reassemblies: [
+      "How long have you felt this way?",
+      "What does being alone feel like for you?",
+      "Do you feel this way even when you're around others?",
+    ] }],
+  },
+  {
+    triggers: ["TIRED", "EXHAUSTED"], rank: 2,
+    decomps: [{ pattern: [W(0)], idx: 0, reassemblies: [
+      "What's been wearing you out?",
+      "Have you been sleeping well?",
+      "Everyone needs rest sometimes.",
+    ] }],
+  },
+  {
+    triggers: ["WORK", "JOB", "BOSS", "CAREER"], rank: 2,
+    decomps: [{ pattern: [W(0)], idx: 0, reassemblies: [
+      "Tell me more about your work.",
+      "Does your job make you feel this way?",
+      "What's your relationship with your boss like?",
+    ] }],
+  },
+  {
+    triggers: ["SCHOOL", "COLLEGE", "CLASS", "STUDY", "STUDIES"], rank: 2,
+    decomps: [{ pattern: [W(0)], idx: 0, reassemblies: [
+      "How is school going?",
+      "Does studying stress you out?",
+      "Tell me about your classes.",
+    ] }],
+  },
+  {
+    triggers: ["RELATIONSHIP", "BOYFRIEND", "GIRLFRIEND", "MARRIAGE", "DIVORCE", "PARTNER"], rank: 2,
+    decomps: [{ pattern: [W(0)], idx: 0, reassemblies: [
+      "Tell me more about your relationship.",
+      "How long have you been together?",
+      "Does your partner know how you feel?",
+    ] }],
+  },
+  {
+    triggers: ["FRIEND", "FRIENDS"], rank: 0,
+    decomps: [{ pattern: [W(0)], idx: 0, reassemblies: [
+      "Tell me about your friends.",
+      "Do your friends know about this?",
+      "What role do your friends play in this?",
+    ] }],
+  },
+  {
+    triggers: ["SICK", "ILL", "PAIN", "HURT"], rank: 3,
+    decomps: [{ pattern: [W(0)], idx: 0, reassemblies: [
+      "How long have you been feeling this way?",
+      "Have you seen someone about that?",
+      "Does this happen often?",
+    ] }],
+  },
+  {
+    triggers: ["MONEY"], rank: 2,
+    decomps: [{ pattern: [W(0)], idx: 0, reassemblies: [
+      "Does money worry you often?",
+      "What about money concerns you most?",
+      "Is this really about money, or something else?",
+    ] }],
+  },
+  {
+    triggers: ["DEATH", "DIE", "DYING", "DIED"], rank: 6,
+    decomps: [{ pattern: [W(0)], idx: 0, reassemblies: [
+      "That sounds like a heavy thing to think about.",
+      "Would you like to talk more about that?",
+      "What's brought this to mind?",
+    ] }],
+  },
+  {
+    triggers: ["SHOULD"], rank: 0,
+    decomps: [
+      { pattern: [W(0), "YOU", "SHOULD", W(0)], idx: 0, reassemblies: [
+        "Says who?",
+        "What would happen if you didn't {2}?",
+        "Who decided you should {2}?",
+      ] },
+      { pattern: [W(0)], idx: 0, reassemblies: ["Says who?", "What would happen if you didn't?"] },
+    ],
+  },
 ];
 
 const NONE_RESPONSES = [
@@ -358,6 +563,10 @@ const NONE_RESPONSES = [
   "Tell me more about that.",
   "Does talking about this bother you?",
   "What does that suggest to you?",
+  "Go on.",
+  "What does that tell you?",
+  "How does that make you feel?",
+  "Can you say more about that?",
 ];
 
 const KEYWORD_LOOKUP = new Map();
