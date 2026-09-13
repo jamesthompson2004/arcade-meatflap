@@ -132,6 +132,13 @@ const LEMUR_BODY_HEIGHT = 0.35;
 const LEMUR_BODY_WIDTH = 0.3;
 const LEMUR_TAIL_LEN = 0.9;
 const LEMUR_NEAR = [225, 175, 110];
+const LEMUR_BUBBLE_DURATION = 1.8;
+const LEMUR_BUBBLE_MIN_INTERVAL = 5;
+const LEMUR_BUBBLE_MAX_INTERVAL = 11;
+const LEMUR_PHRASES = [
+  "I'm a lemur!", "Lemur here!", "Just a lemur!", "Lemur, not a monkey!",
+  "Ring-tailed and proud!", "Lemur alert!",
+];
 const BACON_TOUCH_RADIUS = 1.0;
 const BACON_BOSS_TOUCH_RADIUS = 2.4;
 const BACON_HEIGHT = 1.2;
@@ -1830,6 +1837,8 @@ function getNearbyLemurs(px, pz) {
         heading: Math.random() * Math.PI * 2,
         walkTimer: LEMUR_WALK_MIN + Math.random() * (LEMUR_WALK_MAX - LEMUR_WALK_MIN),
         pauseTimer: 0, legPhase: 0,
+        bubbleTimer: 0, bubbleText: "",
+        nextBubbleIn: LEMUR_BUBBLE_MIN_INTERVAL + Math.random() * (LEMUR_BUBBLE_MAX_INTERVAL - LEMUR_BUBBLE_MIN_INTERVAL),
       };
       lemurState.set(base.key, st);
     }
@@ -1840,6 +1849,8 @@ function getNearbyLemurs(px, pz) {
       y: terrainHeight(st.x, st.z),
       heading: st.heading,
       legPhase: st.legPhase,
+      bubbleTimer: st.bubbleTimer,
+      bubbleText: st.bubbleText,
     });
   }
   for (const k of Array.from(lemurState.keys())) {
@@ -1850,6 +1861,13 @@ function getNearbyLemurs(px, pz) {
 
 function updateLemurs(dt) {
   for (const st of lemurState.values()) {
+    st.nextBubbleIn -= dt;
+    if (st.nextBubbleIn <= 0) {
+      st.bubbleTimer = LEMUR_BUBBLE_DURATION;
+      st.bubbleText = LEMUR_PHRASES[Math.floor(Math.random() * LEMUR_PHRASES.length)];
+      st.nextBubbleIn = LEMUR_BUBBLE_MIN_INTERVAL + Math.random() * (LEMUR_BUBBLE_MAX_INTERVAL - LEMUR_BUBBLE_MIN_INTERVAL);
+    }
+    if (st.bubbleTimer > 0) st.bubbleTimer -= dt;
     if (st.pauseTimer > 0) {
       st.pauseTimer -= dt;
       if (st.pauseTimer <= 0) {
@@ -2750,6 +2768,18 @@ function drawSpeechBubble(sx, sy, text, alpha) {
   ctx.globalAlpha = 1;
 }
 
+function drawLemurBubbles(cam) {
+  for (const l of currentLemurs) {
+    if (!l.bubbleTimer || l.bubbleTimer <= 0) continue;
+    const headY = l.y + LEMUR_BODY_HEIGHT + 0.35;
+    const proj = project(l.x, headY, l.z, cam);
+    if (proj.z <= NEAR) continue;
+    const screen = toScreen(proj);
+    const alpha = Math.min(1, l.bubbleTimer / 0.35);
+    drawSpeechBubble(screen.sx, screen.sy, l.bubbleText, alpha);
+  }
+}
+
 function drawBirdBubbles(cam) {
   for (const st of birdFlockState.values()) {
     if (!st.bubbleTimer || st.bubbleTimer <= 0) continue;
@@ -2970,6 +3000,7 @@ function render() {
 
   drawPantsBubbles(cam);
   drawBirdBubbles(cam);
+  drawLemurBubbles(cam);
   drawBaconDespawns(cam);
   drawBaconPopups(cam);
   drawStaminaBar(cam);
