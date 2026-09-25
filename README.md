@@ -5,9 +5,19 @@ Small browser games, hosted at [arcade.meatflap.com](https://arcade.meatflap.com
 Plain HTML/CSS/JS, no build step, no framework. Deployed via Azure Static Web Apps
 with automatic CI/CD from GitHub Actions (pushes to `main` deploy straight to prod).
 
-**Working on this repo with an AI coding agent?** See [`AGENTS.md`](AGENTS.md) for
-conventions (workflow, deployment, per-game structure, and durable technical notes) —
-it's written to be tool-agnostic, not specific to any one assistant.
+## Working with coding agents
+
+Use whichever coding agent you prefer; the project instructions and handoff notes are shared
+across tools and machines. Start a new session with:
+
+> Read AGENTS.md and the relevant notes in HANDOFF.md, then get oriented.
+
+- [AGENTS.md](AGENTS.md) is the source of truth for editing constraints, validation,
+  the direct-to-`main` commit workflow, deployment, and game-specific technical notes.
+- [HANDOFF.md](HANDOFF.md) holds shared context from previous sessions. Leave a brief dated
+  note there when future work would benefit from what you learned or left unfinished.
+- [CLAUDE.md](CLAUDE.md) is only an automatic-loading entry point for Claude Code;
+  it points to the same shared documents.
 
 ## Structure
 
@@ -18,7 +28,7 @@ games/
   <name>/            each game: its own index.html + css/js, fully self-contained
 ```
 
-Current games: `bacman`, `baconiza`, `eliza`, `fireside`, `flappy`, `scout`, `snake`,
+Current games: `bacman`, `baconiza`, `eliza`, `fireside`, `flappy`, `meatbreaker`, `scout`, `snake`,
 `tetris`, `wander`.
 
 ## Adding a new game

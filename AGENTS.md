@@ -1,11 +1,12 @@
 # Agent conventions — Meatflap Arcade
 
-This is the canonical conventions doc for any AI coding agent working in this repo
-(Claude Code, Cursor, Codex, Copilot, whatever you are). `CLAUDE.md` exists alongside this
-file only because Claude Code specifically auto-loads a file by that exact name — it points
-back here for conventions and carries its own running between-machines log. If you're a
-different agent, read this file and ignore `CLAUDE.md`'s log unless you're curious about
-project history.
+This is the canonical conventions doc for any AI coding agent working in this repo.
+Read it first, regardless of which tool or machine you use. Read [HANDOFF.md](HANDOFF.md)
+for relevant history and recent handoff notes; add useful context there after meaningful
+work. Keep durable project conventions in this file.
+
+`CLAUDE.md` is a thin entry point for Claude Code's automatic loading and points here.
+All agents follow the same editing, validation, commit, and deployment conventions.
 
 ## What this is
 
@@ -79,7 +80,7 @@ games/
 
 ## Project-specific technical knowledge
 
-Distilled from the (much longer, chattier) between-machines log in `CLAUDE.md` — read that
+Distilled from the (much longer, chattier) shared handoff log in `HANDOFF.md` — read that
 file's log if you want the full story behind any of these, but the durable facts are here so
 you don't have to.
 

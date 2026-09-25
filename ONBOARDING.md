@@ -104,8 +104,8 @@ In your very first message to Claude Code in this project, say something like:
 `AGENTS.md` is this project's conventions doc — it explains the no-build-tools rule, the
 "commit straight to `main`, no pull requests" workflow this project uses, the folder
 structure, and notes on the trickier games. `CLAUDE.md` also exists and loads
-automatically for Claude Code — it points back to `AGENTS.md` and keeps a running log of
-what was recently shipped, which is worth a skim too.
+automatically for Claude Code — it points back to `AGENTS.md`. Shared history and
+handoff notes for every coding agent live in `HANDOFF.md`, which is worth a skim too.
 
 ## Step 7: Check that a local preview works
 
